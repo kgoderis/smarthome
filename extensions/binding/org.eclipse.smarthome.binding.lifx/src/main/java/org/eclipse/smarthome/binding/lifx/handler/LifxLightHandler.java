@@ -134,8 +134,10 @@ public class LifxLightHandler extends BaseThingHandler {
                 if (iface.isUp() && !iface.isLoopback()) {
                     for (InterfaceAddress ifaceAddr : iface.getInterfaceAddresses()) {
                         if (ifaceAddr.getAddress() instanceof Inet4Address) {
-                            logger.debug("Adding '{}' as broadcast address", ifaceAddr.getBroadcast());
-                            broadcastAddresses.add(new InetSocketAddress(ifaceAddr.getBroadcast(), BROADCAST_PORT));
+                            if (ifaceAddr.getBroadcast() != null) {
+                                logger.debug("Adding '{}' as broadcast address", ifaceAddr.getBroadcast());
+                                broadcastAddresses.add(new InetSocketAddress(ifaceAddr.getBroadcast(), BROADCAST_PORT));
+                            }
                         }
                     }
                 }
@@ -242,79 +244,83 @@ public class LifxLightHandler extends BaseThingHandler {
             try {
                 lock.lock();
 
-                try {
-                    selector.selectNow();
-                } catch (IOException e) {
-                    logger.error("An exception occurred while selecting: {}", e.getMessage());
-                }
-
-                Set<SelectionKey> selectedKeys = selector.selectedKeys();
-                Iterator<SelectionKey> keyIterator = selectedKeys.iterator();
-
-                while (keyIterator.hasNext()) {
-                    SelectionKey key = keyIterator.next();
-
-                    if (key.isValid() && key.isAcceptable()) {
-                        // a connection was accepted by a ServerSocketChannel.
-                        // block of code only for completeness purposes
-
-                    } else if (key.isValid() && key.isConnectable()) {
-                        // a connection was established with a remote server.
-                        // block of code only for completeness purposes
-
-                    } else if (key.isValid() && key.isReadable()) {
-                        // a channel is ready for reading
-                        SelectableChannel channel = key.channel();
-                        InetSocketAddress address = null;
-
-                        ByteBuffer readBuffer = ByteBuffer.allocate(BUFFER_SIZE);
-                        try {
-                            if (channel instanceof DatagramChannel) {
-                                address = (InetSocketAddress) ((DatagramChannel) channel).receive(readBuffer);
-                            } else if (channel instanceof SocketChannel) {
-                                address = (InetSocketAddress) ((SocketChannel) channel).getRemoteAddress();
-                                ((SocketChannel) channel).read(readBuffer);
-                            }
-                        } catch (Exception e) {
-                            logger.warn("An exception occurred while reading data : '{}'", e.getMessage());
-                            e.printStackTrace();
-                        }
-
-                        readBuffer.rewind();
-
-                        ByteBuffer packetType = readBuffer.slice();
-                        packetType.position(32);
-                        packetType.limit(34);
-
-                        int type = Packet.FIELD_PACKET_TYPE.value(packetType);
-
-                        PacketHandler handler = PacketFactory.createHandler(type);
-
-                        if (handler == null) {
-                            logger.trace("Unknown packet type: {} (source: {})", String.format("0x%02X", type),
-                                    address.toString());
-                            continue;
-                        }
-
-                        Packet packet = handler.handle(readBuffer);
-                        if (packet == null) {
-                            logger.warn("Handler {} was unable to handle packet", handler.getClass().getName());
-                        } else {
-                            handlePacket(packet, address);
-                        }
-
-                    } else if (key.isValid() && key.isWritable()) {
-                        // a channel is ready for writing
-                        // block of code only for completeness purposes
+                if (selector != null) {
+                    try {
+                        selector.selectNow();
+                    } catch (IOException e) {
+                        logger.error("An exception occurred while selecting: {}", e.getMessage());
                     }
 
-                    keyIterator.remove();
+                    Set<SelectionKey> selectedKeys = selector.selectedKeys();
+                    Iterator<SelectionKey> keyIterator = selectedKeys.iterator();
+
+                    while (keyIterator.hasNext()) {
+                        SelectionKey key = keyIterator.next();
+
+                        if (key.isValid() && key.isAcceptable()) {
+                            // a connection was accepted by a ServerSocketChannel.
+                            // block of code only for completeness purposes
+
+                        } else if (key.isValid() && key.isConnectable()) {
+                            // a connection was established with a remote server.
+                            // block of code only for completeness purposes
+
+                        } else if (key.isValid() && key.isReadable()) {
+                            // a channel is ready for reading
+                            SelectableChannel channel = key.channel();
+                            InetSocketAddress address = null;
+
+                            ByteBuffer readBuffer = ByteBuffer.allocate(BUFFER_SIZE);
+                            try {
+                                if (channel instanceof DatagramChannel) {
+                                    address = (InetSocketAddress) ((DatagramChannel) channel).receive(readBuffer);
+                                } else if (channel instanceof SocketChannel) {
+                                    address = (InetSocketAddress) ((SocketChannel) channel).getRemoteAddress();
+                                    ((SocketChannel) channel).read(readBuffer);
+                                }
+                            } catch (Exception e) {
+                                logger.warn("An exception occurred while reading data : '{}'", e.getMessage());
+                                e.printStackTrace();
+                            }
+
+                            readBuffer.rewind();
+
+                            ByteBuffer packetType = readBuffer.slice();
+                            packetType.position(32);
+                            packetType.limit(34);
+
+                            int type = Packet.FIELD_PACKET_TYPE.value(packetType);
+
+                            PacketHandler handler = PacketFactory.createHandler(type);
+
+                            if (handler == null) {
+                                logger.trace("Unknown packet type: {} (source: {})", String.format("0x%02X", type),
+                                        address.toString());
+                                continue;
+                            }
+
+                            Packet packet = handler.handle(readBuffer);
+                            if (packet == null) {
+                                logger.warn("Handler {} was unable to handle packet", handler.getClass().getName());
+                            } else {
+                                handlePacket(packet, address);
+                            }
+
+                        } else if (key.isValid() && key.isWritable()) {
+                            // a channel is ready for writing
+                            // block of code only for completeness purposes
+                        }
+
+                        keyIterator.remove();
+                    }
                 }
             } catch (Exception e) {
                 logger.error("An exception orccurred while communicating with the light : '{}'", e.getMessage());
+                e.printStackTrace();
             } finally {
                 lock.unlock();
             }
+
         }
     };
 
