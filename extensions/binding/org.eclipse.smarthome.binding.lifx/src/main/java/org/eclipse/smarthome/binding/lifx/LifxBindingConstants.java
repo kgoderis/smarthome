@@ -25,6 +25,9 @@ public class LifxBindingConstants {
     // config property for the LIFX device id
     public static final String CONFIG_PROPERTY_DEVICE_ID = "deviceId";
 
+    // config property for the interface to listen for broadcast UDP traffic
+    public static final String CONFIG_PROPERTY_INTERFACE_ID = "interface";
+
     // List of all Thing Type UIDs
     public final static ThingTypeUID THING_TYPE_LIGHT = new ThingTypeUID(BINDING_ID, "light");
 

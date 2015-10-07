@@ -25,12 +25,11 @@ import com.google.common.collect.Lists;
  * handlers.
  *
  * @author Dennis Nobel - Initial contribution
+ * @author Karel Goderis - Remove dependency on external libraries
  */
 public class LifxHandlerFactory extends BaseThingHandlerFactory {
 
     public final static Collection<ThingTypeUID> SUPPORTED_THING_TYPES_UIDS = Lists.newArrayList(THING_TYPE_LIGHT);
-
-    private LifxConnection lifxConnection;
 
     @Override
     public boolean supportsThingType(ThingTypeUID thingTypeUID) {
@@ -40,8 +39,6 @@ public class LifxHandlerFactory extends BaseThingHandlerFactory {
     @Override
     protected void activate(ComponentContext componentContext) {
         super.activate(componentContext);
-        lifxConnection = LifxConnection.getInstance();
-        lifxConnection.connect();
     }
 
     @Override
@@ -59,6 +56,5 @@ public class LifxHandlerFactory extends BaseThingHandlerFactory {
     @Override
     protected void deactivate(ComponentContext componentContext) {
         super.deactivate(componentContext);
-        lifxConnection.disconnect();
     }
 }
