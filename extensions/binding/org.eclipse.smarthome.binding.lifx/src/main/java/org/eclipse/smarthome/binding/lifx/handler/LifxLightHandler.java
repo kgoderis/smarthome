@@ -203,6 +203,14 @@ public class LifxLightHandler extends BaseThingHandler {
             secondPacket.setResponseRequired(true);
             sendPacket(secondPacket);
         }
+
+        // the LIFX LAN protocol spec indicates that the response returned for a request would be the
+        // previous value, so we explicitely demand for the latest value
+        GetLightPowerRequest powerPacket = new GetLightPowerRequest();
+        sendPacket(powerPacket);
+
+        GetRequest colorPacket = new GetRequest();
+        sendPacket(colorPacket);
     }
 
     private void handlePercentCommand(PercentType percentType) {
@@ -217,6 +225,11 @@ public class LifxLightHandler extends BaseThingHandler {
         PowerState lfxPowerState = onOffType == OnOffType.ON ? PowerState.ON : PowerState.OFF;
         SetLightPowerRequest packet = new SetLightPowerRequest(lfxPowerState);
         sendPacket(packet);
+
+        // the LIFX LAN protocol spec indicates that the response returned for a request would be the
+        // previous value, so we explicitely demand for the latest value
+        GetLightPowerRequest powerPacket = new GetLightPowerRequest();
+        sendPacket(powerPacket);
     }
 
     private void handleIncreaseDecreaseCommand(IncreaseDecreaseType increaseDecreaseType) {
