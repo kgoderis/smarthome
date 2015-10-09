@@ -41,7 +41,7 @@ public class GetRequest extends Packet {
 
     @Override
     public int[] expectedResponses() {
-        return new int[] {};
+        return new int[] { StateResponse.TYPE };
     }
 
 }

@@ -35,6 +35,8 @@ import java.util.concurrent.locks.ReentrantLock;
 
 import org.eclipse.smarthome.binding.lifx.LifxBindingConstants;
 import org.eclipse.smarthome.binding.lifx.fields.MACAddress;
+import org.eclipse.smarthome.binding.lifx.protocol.GetLightPowerRequest;
+import org.eclipse.smarthome.binding.lifx.protocol.GetRequest;
 import org.eclipse.smarthome.binding.lifx.protocol.GetServiceRequest;
 import org.eclipse.smarthome.binding.lifx.protocol.Packet;
 import org.eclipse.smarthome.binding.lifx.protocol.PacketFactory;
@@ -204,8 +206,11 @@ public class LifxLightHandler extends BaseThingHandler {
     }
 
     private void handlePercentCommand(PercentType percentType) {
-        HSBType newColorState = new HSBType(currentColorState.getHue(), currentColorState.getSaturation(), percentType);
-        handleHSBCommand(newColorState);
+        if (currentColorState != null) {
+            HSBType newColorState = new HSBType(currentColorState.getHue(), currentColorState.getSaturation(),
+                    percentType);
+            handleHSBCommand(newColorState);
+        }
     }
 
     private void handleOnOffCommand(OnOffType onOffType) {
@@ -477,6 +482,13 @@ public class LifxLightHandler extends BaseThingHandler {
                         }
 
                         updateStatus(ThingStatus.ONLINE);
+
+                        // populate the current state variables
+                        GetLightPowerRequest powerPacket = new GetLightPowerRequest();
+                        sendPacket(powerPacket);
+
+                        GetRequest colorPacket = new GetRequest();
+                        sendPacket(colorPacket);
                     }
                 }
             }
