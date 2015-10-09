@@ -83,7 +83,7 @@ public class LifxLightHandler extends BaseThingHandler {
     private int service;
     private int port;
     private MACAddress macAddress = null;
-    private int sequenceNumber = 0;
+    private int sequenceNumber = 1;
     private PowerState currentPowerState;
     private HSBType currentColorState;
 
@@ -358,7 +358,7 @@ public class LifxLightHandler extends BaseThingHandler {
 
             sequenceNumber++;
             if (sequenceNumber > 255) {
-                sequenceNumber = 0;
+                sequenceNumber = 1;
             }
         }
     }
@@ -383,7 +383,7 @@ public class LifxLightHandler extends BaseThingHandler {
 
         sequenceNumber++;
         if (sequenceNumber > 255) {
-            sequenceNumber = 0;
+            sequenceNumber = 1;
         }
     }
 
