@@ -329,7 +329,6 @@ public class LifxLightHandler extends BaseThingHandler {
                             // block of code only for completeness purposes
                         }
 
-                        keyIterator.remove();
                     }
                 }
             } catch (Exception e) {
