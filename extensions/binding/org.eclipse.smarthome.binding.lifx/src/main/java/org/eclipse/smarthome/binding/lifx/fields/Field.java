@@ -10,6 +10,8 @@ import java.nio.ByteBuffer;
  * datatypes and a LIFX-compatible byte representation.
  *
  * @param <T> the field datatype
+ *
+ * @author Tim Buckley
  */
 public abstract class Field<T> {
 

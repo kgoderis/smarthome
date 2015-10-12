@@ -14,6 +14,10 @@ import org.eclipse.smarthome.binding.lifx.fields.StringField;
 import org.eclipse.smarthome.binding.lifx.fields.UInt16Field;
 import org.eclipse.smarthome.binding.lifx.fields.UInt64Field;
 
+/**
+ * @author Tim Buckley - Initial Contribution
+ * @author Karel Goderis - Enhancement for the V2 LIFX Firmware and LAN Protocol Specification
+ */
 public class StateResponse extends Packet {
 
     public static final int TYPE = 0x6B;

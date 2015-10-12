@@ -1,5 +1,9 @@
 /**
- * Copyright  (c) 2014 timothyb89 (https://github.com/timothyb89/lifx-java) under the MIT license
+ * Copyright (c) 2014 openHAB UG (haftungsbeschraenkt) and others.
+ * All rights reserved. This program and the accompanying materials
+ * are made available under the terms of the Eclipse Public License v1.0
+ * which accompanies this distribution, and is available at
+ * http://www.eclipse.org/legal/epl-v10.html
  */
 package org.eclipse.smarthome.binding.lifx.fields;
 
@@ -9,6 +13,8 @@ import java.nio.ByteBuffer;
  * A pseudo-uint64 field. Bytes will be stored directly in a long value, so
  * unexpected values will likely be shown if exposed to users. Most bit-level
  * operations should still work (addition, multiplication, shifting, etc).
+ *
+ * @author Tim Buckley
  */
 public class UInt64Field extends Field<Long> {
 

@@ -21,6 +21,10 @@ import org.apache.commons.lang.StringUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+/**
+ * @author Tim Buckley
+ * @author Karel Goderis
+ */
 public class MACAddress {
 
     private Logger logger = LoggerFactory.getLogger(MACAddress.class);

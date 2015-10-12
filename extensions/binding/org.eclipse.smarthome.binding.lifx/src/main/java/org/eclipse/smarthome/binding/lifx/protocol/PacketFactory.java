@@ -16,6 +16,8 @@ import java.util.Map;
  * e. Packet handlers (used to construct actual packet
  * instances) may be retrieved via their packet type.
  *
+ * @author Tim Buckley - Initial Contribution
+ * @author Karel Goderis - Enhancement for the V2 LIFX Firmware and LAN Protocol Specification
  */
 public class PacketFactory {
 

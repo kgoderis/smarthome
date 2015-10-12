@@ -9,6 +9,10 @@ package org.eclipse.smarthome.binding.lifx.fields;
 
 import java.nio.ByteBuffer;
 
+/**
+ * @author Tim Buckley
+ * @author Karel Goderis
+ */
 public class MACAddressField extends Field<MACAddress> {
 
     public MACAddressField() {

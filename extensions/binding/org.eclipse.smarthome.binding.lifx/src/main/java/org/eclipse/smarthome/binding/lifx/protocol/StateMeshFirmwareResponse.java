@@ -15,6 +15,10 @@ import org.eclipse.smarthome.binding.lifx.fields.StringField;
 import org.eclipse.smarthome.binding.lifx.fields.UInt32Field;
 import org.eclipse.smarthome.binding.lifx.fields.UInt8Field;
 
+/**
+ * @author Tim Buckley - Initial Contribution
+ * @author Karel Goderis - Enhancement for the V2 LIFX Firmware and LAN Protocol Specification
+ */
 public class StateMeshFirmwareResponse extends Packet {
 
     public static final int TYPE = 0x0F;

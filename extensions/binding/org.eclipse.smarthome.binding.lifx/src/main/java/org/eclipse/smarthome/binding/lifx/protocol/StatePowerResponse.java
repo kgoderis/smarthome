@@ -12,6 +12,10 @@ import java.nio.ByteBuffer;
 import org.eclipse.smarthome.binding.lifx.fields.Field;
 import org.eclipse.smarthome.binding.lifx.fields.UInt16Field;
 
+/**
+ * @author Tim Buckley - Initial Contribution
+ * @author Karel Goderis - Enhancement for the V2 LIFX Firmware and LAN Protocol Specification
+ */
 public class StatePowerResponse extends Packet {
 
     public static final int TYPE = 0x16;

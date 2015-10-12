@@ -5,6 +5,9 @@ package org.eclipse.smarthome.binding.lifx.fields;
 
 import java.nio.ByteBuffer;
 
+/**
+ * @author Tim Buckley
+ */
 public class FloatField extends Field<Float> {
 
     @Override

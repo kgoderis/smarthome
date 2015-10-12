@@ -9,6 +9,10 @@ package org.eclipse.smarthome.binding.lifx.protocol;
 
 import java.nio.ByteBuffer;
 
+/**
+ * @author Tim Buckley - Initial Contribution
+ * @author Karel Goderis - Enhancement for the V2 LIFX Firmware and LAN Protocol Specification
+ */
 public class GetVersionRequest extends Packet {
 
     public static final int TYPE = 0x20;
