@@ -7,11 +7,13 @@
  */
 package org.eclipse.smarthome.binding.lifx.internal;
 
+import java.net.DatagramPacket;
 import java.net.Inet4Address;
 import java.net.InetSocketAddress;
 import java.net.InterfaceAddress;
 import java.net.NetworkInterface;
 import java.net.SocketAddress;
+import java.net.SocketTimeoutException;
 import java.net.StandardProtocolFamily;
 import java.net.StandardSocketOptions;
 import java.nio.ByteBuffer;
@@ -55,6 +57,7 @@ public class LifxLightDiscovery extends AbstractDiscoveryService {
     private final int BROADCAST_PORT = 56700;
     private static int BUFFER_SIZE = 255;
     private static int REFRESH_INTERVAL = 60;
+    private static int BROADCAST_TIMEOUT = 5000;
 
     private ScheduledFuture<?> discoveryJob;
 
@@ -118,6 +121,7 @@ public class LifxLightDiscovery extends AbstractDiscoveryService {
                     .setOption(StandardSocketOptions.SO_REUSEADDR, true)
                     .setOption(StandardSocketOptions.SO_BROADCAST, true);
             broadcastChannel.configureBlocking(true);
+            broadcastChannel.socket().setSoTimeout(BROADCAST_TIMEOUT);
             broadcastChannel.bind(new InetSocketAddress(BROADCAST_PORT));
 
             // look for lights on the network
@@ -130,7 +134,14 @@ public class LifxLightDiscovery extends AbstractDiscoveryService {
             }
 
             ByteBuffer readBuffer = ByteBuffer.allocate(BUFFER_SIZE);
-            SocketAddress address = broadcastChannel.receive(readBuffer);
+            SocketAddress address = null;
+            try {
+                DatagramPacket p = new DatagramPacket(readBuffer.array(), readBuffer.array().length);
+                broadcastChannel.socket().receive(p);
+                address = p.getSocketAddress();
+            } catch (SocketTimeoutException e) {
+                address = null;
+            }
 
             while (address != null) {
 
@@ -156,7 +167,13 @@ public class LifxLightDiscovery extends AbstractDiscoveryService {
                 }
 
                 readBuffer.clear();
-                address = broadcastChannel.receive(readBuffer);
+                try {
+                    DatagramPacket p = new DatagramPacket(readBuffer.array(), readBuffer.array().length);
+                    broadcastChannel.socket().receive(p);
+                    address = p.getSocketAddress();
+                } catch (SocketTimeoutException e) {
+                    address = null;
+                }
             }
         } catch (Exception e) {
             logger.debug("An exception occurred while discovering LIFX lights : '{}", e.getMessage());
