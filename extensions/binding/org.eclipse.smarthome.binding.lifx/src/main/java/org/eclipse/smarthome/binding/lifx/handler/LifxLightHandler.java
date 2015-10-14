@@ -109,6 +109,9 @@ public class LifxLightHandler extends BaseThingHandler {
             networkJob = null;
         }
 
+        currentColorState = null;
+        currentPowerState = null;
+
         try {
             selector.close();
         } catch (IOException e) {
@@ -154,6 +157,8 @@ public class LifxLightHandler extends BaseThingHandler {
             broadcastChannel.bind(new InetSocketAddress(BROADCAST_PORT));
             broadcastKey = broadcastChannel.register(selector, SelectionKey.OP_READ | SelectionKey.OP_WRITE);
 
+            updateStatus(ThingStatus.OFFLINE, ThingStatusDetail.CONFIGURATION_PENDING);
+
             // look for lights on the network
             GetServiceRequest packet = new GetServiceRequest();
             broadcastPacket(packet);
@@ -195,12 +200,12 @@ public class LifxLightHandler extends BaseThingHandler {
         SetColorRequest packet = new SetColorRequest((int) (hsbType.getHue().floatValue() / 360 * 65535.0f),
                 (int) (hsbType.getSaturation().floatValue() / 100 * 65535.0f),
                 (int) (hsbType.getBrightness().floatValue() / 100 * 65535.0f), 0, 0);
-        packet.setResponseRequired(true);
+        packet.setResponseRequired(false);
         sendPacket(packet);
 
         if (currentPowerState != PowerState.ON) {
             SetLightPowerRequest secondPacket = new SetLightPowerRequest(PowerState.ON);
-            secondPacket.setResponseRequired(true);
+            secondPacket.setResponseRequired(false);
             sendPacket(secondPacket);
         }
 
@@ -501,9 +506,12 @@ public class LifxLightHandler extends BaseThingHandler {
 
                         GetRequest colorPacket = new GetRequest();
                         sendPacket(colorPacket);
+
                     }
                 }
             }
+
+            return;
         }
 
         if (packet instanceof StateResponse) {
