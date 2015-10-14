@@ -34,8 +34,8 @@ public class GetEchoRequest extends Packet {
         return payload;
     }
 
-    public void setPayload(ByteBuffer location) {
-        this.payload = location;
+    public void setPayload(ByteBuffer payload) {
+        this.payload = payload;
     }
 
     @Override

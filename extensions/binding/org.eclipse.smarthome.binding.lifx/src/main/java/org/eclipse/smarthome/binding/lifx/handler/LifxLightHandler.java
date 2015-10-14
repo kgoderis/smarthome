@@ -24,17 +24,19 @@ import java.nio.channels.Selector;
 import java.nio.channels.SocketChannel;
 import java.util.ArrayList;
 import java.util.Enumeration;
-import java.util.HashMap;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Set;
 import java.util.UUID;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.locks.ReentrantLock;
 
 import org.eclipse.smarthome.binding.lifx.LifxBindingConstants;
 import org.eclipse.smarthome.binding.lifx.fields.MACAddress;
+import org.eclipse.smarthome.binding.lifx.protocol.EchoRequestResponse;
+import org.eclipse.smarthome.binding.lifx.protocol.GetEchoRequest;
 import org.eclipse.smarthome.binding.lifx.protocol.GetLightPowerRequest;
 import org.eclipse.smarthome.binding.lifx.protocol.GetRequest;
 import org.eclipse.smarthome.binding.lifx.protocol.GetServiceRequest;
@@ -76,8 +78,10 @@ public class LifxLightHandler extends BaseThingHandler {
 
     private static final double INCREASE_DECREASE_STEP = 0.10;
     private final int BROADCAST_PORT = 56700;
-    private static long NETWORK_INTERVAL = 10;
+    private static long NETWORK_INTERVAL = 50;
     private static int BUFFER_SIZE = 255;
+    private static int POLLING_INTERVAL = 15;
+    private static int MAXIMUM_POLLING_RETRIES = 2;
 
     private int source;
     private int service;
@@ -90,13 +94,14 @@ public class LifxLightHandler extends BaseThingHandler {
     private Selector selector;
     private ScheduledFuture<?> networkJob;
     private ReentrantLock lock = new ReentrantLock();
+    private long lastPollingTimestamp = 0;
 
     private InetSocketAddress ipAddress = null;
     private DatagramChannel unicastChannel = null;
     private SelectionKey unicastKey = null;
     private SelectionKey broadcastKey = null;
     private List<InetSocketAddress> broadcastAddresses;
-    private HashMap<Integer, Packet> sentPackets = new HashMap<Integer, Packet>();
+    private ConcurrentHashMap<Integer, Packet> sentPackets = new ConcurrentHashMap<Integer, Packet>();
 
     public LifxLightHandler(Thing thing) {
         super(thing);
@@ -343,6 +348,32 @@ public class LifxLightHandler extends BaseThingHandler {
                 lock.unlock();
             }
 
+            // poll the device
+            if ((System.currentTimeMillis() - lastPollingTimestamp) > POLLING_INTERVAL * 1000) {
+                int counter = 0;
+                for (Packet aPacket : sentPackets.values()) {
+                    if (aPacket instanceof GetEchoRequest) {
+                        counter++;
+                    }
+                }
+
+                lastPollingTimestamp = System.currentTimeMillis();
+
+                if (counter < MAXIMUM_POLLING_RETRIES) {
+                    ByteBuffer payload = ByteBuffer.allocate(Long.SIZE / 8);
+                    payload.putLong(lastPollingTimestamp);
+
+                    GetEchoRequest request = new GetEchoRequest();
+                    request.setResponseRequired(true);
+                    request.setPayload(payload);
+
+                    sendPacket(request);
+                } else {
+                    updateStatus(ThingStatus.OFFLINE, ThingStatusDetail.COMMUNICATION_ERROR);
+                    sentPackets.clear();
+                }
+            }
+
         }
     };
 
@@ -392,6 +423,10 @@ public class LifxLightHandler extends BaseThingHandler {
     }
 
     private boolean sendPacket(Packet packet, InetSocketAddress address, SelectionKey selectedKey) {
+
+        logger.debug("Sending packet type '{}' to '{}' for '{}' with sequence '{}'",
+                new Object[] { packet.getClass().getSimpleName(), address.toString(), packet.getTarget().getHex(),
+                        packet.getSequence() });
 
         boolean result = false;
 
@@ -454,7 +489,7 @@ public class LifxLightHandler extends BaseThingHandler {
                 sentPackets.remove(packet.getSequence());
                 logger.debug("There are now {} unanswered packets remaining", sentPackets.size());
                 for (Packet aPacket : sentPackets.values()) {
-                    logger.trace("sendPackets contains {} with sequence number {}", aPacket.getClass().getSimpleName(),
+                    logger.debug("sendPackets contains {} with sequence number {}", aPacket.getClass().getSimpleName(),
                             aPacket.getSequence());
                 }
             }
@@ -528,6 +563,11 @@ public class LifxLightHandler extends BaseThingHandler {
             // Do we care about labels?
             return;
         }
+
+        if (packet instanceof EchoRequestResponse) {
+            handleEchoRequestReponse((EchoRequestResponse) packet);
+            return;
+        }
     }
 
     public void handleLightStatus(StateResponse packet) {
@@ -561,5 +601,19 @@ public class LifxLightHandler extends BaseThingHandler {
         }
 
         updateStatus(ThingStatus.ONLINE);
+    }
+
+    public void handleEchoRequestReponse(EchoRequestResponse packet) {
+        // remove any unanswered echo requests
+        for (Packet aPacket : sentPackets.values()) {
+            if (aPacket.getPacketType() == GetEchoRequest.TYPE) {
+                sentPackets.remove(aPacket.getSequence());
+            }
+        }
+        if (getThing().getStatus() == ThingStatus.OFFLINE) {
+            // remove any unanswered packet that were sent before
+            sentPackets.clear();
+            updateStatus(ThingStatus.ONLINE);
+        }
     }
 }
