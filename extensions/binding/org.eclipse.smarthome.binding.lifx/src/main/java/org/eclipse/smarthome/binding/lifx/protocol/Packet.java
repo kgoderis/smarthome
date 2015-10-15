@@ -254,8 +254,8 @@ public abstract class Packet {
      */
     protected ByteBuffer preambleBytes() {
         return ByteBuffer.allocate(preambleLength()).put(FIELD_SIZE.bytes(length())).put(FIELD_PROTOCOL.bytes(protocol))
-                .put(ByteBuffer.allocate(FIELD_SOURCE.getLength())) // empty
-                .put(FIELD_TARGET.bytes(target)).put(ByteBuffer.allocate(FIELD_RESERVED_1.getLength())) // empty
+                .put(FIELD_SOURCE.bytes(source)).put(FIELD_TARGET.bytes(target))
+                .put(ByteBuffer.allocate(FIELD_RESERVED_1.getLength())) // empty
                 .put(FIELD_ACK.bytes(ackbyte)).put(FIELD_SEQUENCE.bytes(sequence))
                 .put(ByteBuffer.allocate(FIELD_RESERVED_2.getLength())) // empty
                 .put(FIELD_PACKET_TYPE.bytes(packetType())).put(ByteBuffer.allocate(FIELD_RESERVED_3.getLength())); // empty

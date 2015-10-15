@@ -11,6 +11,7 @@ import static org.eclipse.smarthome.binding.lifx.LifxBindingConstants.CHANNEL_CO
 
 import java.io.IOException;
 import java.net.Inet4Address;
+import java.net.InetAddress;
 import java.net.InetSocketAddress;
 import java.net.InterfaceAddress;
 import java.net.NetworkInterface;
@@ -83,10 +84,11 @@ public class LifxLightHandler extends BaseThingHandler {
     private static int POLLING_INTERVAL = 15;
     private static int MAXIMUM_POLLING_RETRIES = 2;
 
-    private int source;
+    private long source;
     private int service;
     private int port;
     private MACAddress macAddress = null;
+    private MACAddress broadcastAddress = new MACAddress("000000000000", true);
     private int sequenceNumber = 1;
     private PowerState currentPowerState;
     private HSBType currentColorState;
@@ -101,6 +103,7 @@ public class LifxLightHandler extends BaseThingHandler {
     private SelectionKey unicastKey = null;
     private SelectionKey broadcastKey = null;
     private List<InetSocketAddress> broadcastAddresses;
+    private List<InetAddress> interfaceAddresses;
     private ConcurrentHashMap<Integer, Packet> sentPackets = new ConcurrentHashMap<Integer, Packet>();
 
     public LifxLightHandler(Thing thing) {
@@ -128,15 +131,17 @@ public class LifxLightHandler extends BaseThingHandler {
     public void initialize() {
         try {
             macAddress = new MACAddress((String) getConfig().get(LifxBindingConstants.CONFIG_PROPERTY_DEVICE_ID), true);
-            logger.debug("Initializing LIFX handler for light '{}'.", this.macAddress.getHex());
+            logger.debug("Initializing the LIFX handler for light '{}'.", this.macAddress.getHex());
 
             if (networkJob == null || networkJob.isCancelled()) {
                 networkJob = scheduler.scheduleWithFixedDelay(networkRunnable, 0, NETWORK_INTERVAL,
                         TimeUnit.MILLISECONDS);
             }
 
-            source = (int) UUID.randomUUID().getLeastSignificantBits();
+            source = UUID.randomUUID().getLeastSignificantBits() & (-1L >>> 32);
+            logger.debug("The LIFX handler will use '{}' as source identifier", Long.toString(source, 16));
             broadcastAddresses = new ArrayList<InetSocketAddress>();
+            interfaceAddresses = new ArrayList<InetAddress>();
 
             Enumeration<NetworkInterface> networkInterfaces = NetworkInterface.getNetworkInterfaces();
             while (networkInterfaces.hasMoreElements()) {
@@ -144,6 +149,8 @@ public class LifxLightHandler extends BaseThingHandler {
                 if (iface.isUp() && !iface.isLoopback()) {
                     for (InterfaceAddress ifaceAddr : iface.getInterfaceAddresses()) {
                         if (ifaceAddr.getAddress() instanceof Inet4Address) {
+                            logger.debug("Adding '{}' as interface address", ifaceAddr.getAddress());
+                            interfaceAddresses.add(ifaceAddr.getAddress());
                             if (ifaceAddr.getBroadcast() != null) {
                                 logger.debug("Adding '{}' as broadcast address", ifaceAddr.getBroadcast());
                                 broadcastAddresses.add(new InetSocketAddress(ifaceAddr.getBroadcast(), BROADCAST_PORT));
@@ -308,32 +315,33 @@ public class LifxLightHandler extends BaseThingHandler {
                                 }
                             } catch (Exception e) {
                                 logger.warn("An exception occurred while reading data : '{}'", e.getMessage());
-                                e.printStackTrace();
                             }
 
-                            readBuffer.rewind();
+                            if (!interfaceAddresses.contains(address.getAddress())) {
 
-                            ByteBuffer packetType = readBuffer.slice();
-                            packetType.position(32);
-                            packetType.limit(34);
+                                readBuffer.rewind();
 
-                            int type = Packet.FIELD_PACKET_TYPE.value(packetType);
+                                ByteBuffer packetType = readBuffer.slice();
+                                packetType.position(32);
+                                packetType.limit(34);
 
-                            PacketHandler handler = PacketFactory.createHandler(type);
+                                int type = Packet.FIELD_PACKET_TYPE.value(packetType);
 
-                            if (handler == null) {
-                                logger.trace("Unknown packet type: {} (source: {})", String.format("0x%02X", type),
-                                        address.toString());
-                                continue;
+                                PacketHandler handler = PacketFactory.createHandler(type);
+
+                                if (handler == null) {
+                                    logger.trace("Unknown packet type: {} (source: {})", String.format("0x%02X", type),
+                                            address.toString());
+                                    continue;
+                                }
+
+                                Packet packet = handler.handle(readBuffer);
+                                if (packet == null) {
+                                    logger.warn("Handler {} was unable to handle packet", handler.getClass().getName());
+                                } else {
+                                    handlePacket(packet, address);
+                                }
                             }
-
-                            Packet packet = handler.handle(readBuffer);
-                            if (packet == null) {
-                                logger.warn("Handler {} was unable to handle packet", handler.getClass().getName());
-                            } else {
-                                handlePacket(packet, address);
-                            }
-
                         } else if (key.isValid() && key.isWritable()) {
                             // a channel is ready for writing
                             // block of code only for completeness purposes
@@ -343,7 +351,6 @@ public class LifxLightHandler extends BaseThingHandler {
                 }
             } catch (Exception e) {
                 logger.error("An exception orccurred while communicating with the light : '{}'", e.getMessage());
-                e.printStackTrace();
             } finally {
                 lock.unlock();
             }
@@ -424,10 +431,6 @@ public class LifxLightHandler extends BaseThingHandler {
 
     private boolean sendPacket(Packet packet, InetSocketAddress address, SelectionKey selectedKey) {
 
-        logger.debug("Sending packet type '{}' to '{}' for '{}' with sequence '{}'",
-                new Object[] { packet.getClass().getSimpleName(), address.toString(), packet.getTarget().getHex(),
-                        packet.getSequence() });
-
         boolean result = false;
 
         try {
@@ -449,8 +452,14 @@ public class LifxLightHandler extends BaseThingHandler {
                     SelectableChannel channel = key.channel();
                     try {
                         if (channel instanceof DatagramChannel) {
+                            logger.debug("Sending packet type '{}' to '{}' for '{}' with sequence '{}' and source '{}'",
+                                    new Object[] { packet.getClass().getSimpleName(), address.toString(),
+                                            packet.getTarget().getHex(), packet.getSequence(),
+                                            Long.toString(packet.getSource(), 16) });
                             int number = ((DatagramChannel) channel).send(packet.bytes(), address);
-                            sentPackets.put(sequenceNumber, packet);
+                            if (packet.getResponseRequired()) {
+                                sentPackets.put(packet.getSequence(), packet);
+                            }
                             result = true;
                         } else if (channel instanceof SocketChannel) {
                             ((SocketChannel) channel).write(packet.bytes());
@@ -471,102 +480,104 @@ public class LifxLightHandler extends BaseThingHandler {
 
     private void handlePacket(Packet packet, InetSocketAddress address) {
 
-        if (!packet.getTarget().equals(macAddress)) {
-            return;
-        }
+        if ((packet.getTarget().equals(macAddress) || packet.getTarget().equals(broadcastAddress))
+                && (packet.getSource() == source || packet.getSource() == 0)) {
 
-        logger.debug("Packet type '{}' received from '{}' for '{}' with sequence '{}'",
-                new Object[] { packet.getClass().getSimpleName(), address.toString(), packet.getTarget().getHex(),
-                        packet.getSequence() });
+            logger.debug("Packet type '{}' received from '{}' for '{}' with sequence '{}' and source '{}'",
+                    new Object[] { packet.getClass().getSimpleName(), address.toString(), packet.getTarget().getHex(),
+                            packet.getSequence(), Long.toString(packet.getSource(), 16) });
 
-        Packet originalPacket = sentPackets.get(packet.getSequence());
-        if (originalPacket != null) {
-            logger.debug("Packet is a response to a packet of type '{}' with sequence number '{}'",
-                    originalPacket.getClass().getSimpleName(), packet.getSequence());
-            logger.debug("This response was {}expected",
-                    originalPacket.isExpectedResponse(packet.getPacketType()) ? "" : "not ");
-            if (originalPacket.isFulfilled(packet)) {
-                sentPackets.remove(packet.getSequence());
-                logger.debug("There are now {} unanswered packets remaining", sentPackets.size());
-                for (Packet aPacket : sentPackets.values()) {
-                    logger.debug("sendPackets contains {} with sequence number {}", aPacket.getClass().getSimpleName(),
-                            aPacket.getSequence());
-                }
-            }
-        }
-
-        if (packet instanceof StateServiceResponse) {
-            MACAddress discoveredAddress = ((StateServiceResponse) packet).getTarget();
-            if (macAddress.equals(discoveredAddress)) {
-                if (!address.equals(ipAddress) && port != (int) ((StateServiceResponse) packet).getPort()
-                        && service != ((StateServiceResponse) packet).getService()) {
-                    this.port = (int) ((StateServiceResponse) packet).getPort();
-                    this.service = ((StateServiceResponse) packet).getService();
-
-                    if (port == 0) {
-                        logger.warn("The service with ID '{}' is currently not available", service);
-                        updateStatus(ThingStatus.OFFLINE, ThingStatusDetail.COMMUNICATION_ERROR);
-                    } else {
-
-                        if (unicastChannel != null && unicastKey != null) {
-                            try {
-                                unicastChannel.close();
-                            } catch (IOException e) {
-                                logger.error("An exception occurred while closing the channel : '{}'", e.getMessage());
-                            }
-                            unicastKey.cancel();
-                        }
-
-                        try {
-                            ipAddress = new InetSocketAddress(address.getAddress(), port);
-                            unicastChannel = DatagramChannel.open(StandardProtocolFamily.INET)
-                                    .setOption(StandardSocketOptions.SO_REUSEADDR, true);
-                            unicastChannel.configureBlocking(false);
-                            unicastKey = unicastChannel.register(selector,
-                                    SelectionKey.OP_READ | SelectionKey.OP_WRITE);
-                            unicastChannel.connect(ipAddress);
-                            logger.debug("Connected to a light via {}", unicastChannel.getLocalAddress().toString());
-                        } catch (Exception e) {
-                            logger.warn("An exception occurred while connectin to the bulb's IP address : '{}'",
-                                    e.getMessage());
-                            updateStatus(ThingStatus.OFFLINE, ThingStatusDetail.COMMUNICATION_ERROR);
-                            return;
-                        }
-
-                        updateStatus(ThingStatus.ONLINE);
-
-                        // populate the current state variables
-                        GetLightPowerRequest powerPacket = new GetLightPowerRequest();
-                        sendPacket(powerPacket);
-
-                        GetRequest colorPacket = new GetRequest();
-                        sendPacket(colorPacket);
-
+            Packet originalPacket = sentPackets.get(packet.getSequence());
+            if (originalPacket != null) {
+                logger.debug("Packet is a response to a packet of type '{}' with sequence number '{}'",
+                        originalPacket.getClass().getSimpleName(), packet.getSequence());
+                logger.debug("This response was {}expected",
+                        originalPacket.isExpectedResponse(packet.getPacketType()) ? "" : "not ");
+                if (originalPacket.isFulfilled(packet)) {
+                    sentPackets.remove(packet.getSequence());
+                    logger.debug("There are now {} unanswered packets remaining", sentPackets.size());
+                    for (Packet aPacket : sentPackets.values()) {
+                        logger.debug("sentPackets contains {} with sequence number {}",
+                                aPacket.getClass().getSimpleName(), aPacket.getSequence());
                     }
                 }
             }
 
-            return;
-        }
+            if (packet instanceof StateServiceResponse) {
+                MACAddress discoveredAddress = ((StateServiceResponse) packet).getTarget();
+                if (macAddress.equals(discoveredAddress)) {
+                    if (!address.equals(ipAddress) && port != (int) ((StateServiceResponse) packet).getPort()
+                            && service != ((StateServiceResponse) packet).getService()) {
+                        this.port = (int) ((StateServiceResponse) packet).getPort();
+                        this.service = ((StateServiceResponse) packet).getService();
 
-        if (packet instanceof StateResponse) {
-            handleLightStatus((StateResponse) packet);
-            return;
-        }
+                        if (port == 0) {
+                            logger.warn("The service with ID '{}' is currently not available", service);
+                            updateStatus(ThingStatus.OFFLINE, ThingStatusDetail.COMMUNICATION_ERROR);
+                        } else {
 
-        if (packet instanceof StatePowerResponse) {
-            handlePowerStatus((StatePowerResponse) packet);
-            return;
-        }
+                            if (unicastChannel != null && unicastKey != null) {
+                                try {
+                                    unicastChannel.close();
+                                } catch (IOException e) {
+                                    logger.error("An exception occurred while closing the channel : '{}'",
+                                            e.getMessage());
+                                }
+                                unicastKey.cancel();
+                            }
 
-        if (packet instanceof StateLabelResponse) {
-            // Do we care about labels?
-            return;
-        }
+                            try {
+                                ipAddress = new InetSocketAddress(address.getAddress(), port);
+                                unicastChannel = DatagramChannel.open(StandardProtocolFamily.INET)
+                                        .setOption(StandardSocketOptions.SO_REUSEADDR, true);
+                                unicastChannel.configureBlocking(false);
+                                unicastKey = unicastChannel.register(selector,
+                                        SelectionKey.OP_READ | SelectionKey.OP_WRITE);
+                                unicastChannel.connect(ipAddress);
+                                logger.debug("Connected to a light via {}",
+                                        unicastChannel.getLocalAddress().toString());
+                            } catch (Exception e) {
+                                logger.warn("An exception occurred while connectin to the bulb's IP address : '{}'",
+                                        e.getMessage());
+                                updateStatus(ThingStatus.OFFLINE, ThingStatusDetail.COMMUNICATION_ERROR);
+                                return;
+                            }
 
-        if (packet instanceof EchoRequestResponse) {
-            handleEchoRequestReponse((EchoRequestResponse) packet);
-            return;
+                            updateStatus(ThingStatus.ONLINE);
+
+                            // populate the current state variables
+                            GetLightPowerRequest powerPacket = new GetLightPowerRequest();
+                            sendPacket(powerPacket);
+
+                            GetRequest colorPacket = new GetRequest();
+                            sendPacket(colorPacket);
+
+                        }
+                    }
+                }
+
+                return;
+            }
+
+            if (packet instanceof StateResponse) {
+                handleLightStatus((StateResponse) packet);
+                return;
+            }
+
+            if (packet instanceof StatePowerResponse) {
+                handlePowerStatus((StatePowerResponse) packet);
+                return;
+            }
+
+            if (packet instanceof StateLabelResponse) {
+                // Do we care about labels?
+                return;
+            }
+
+            if (packet instanceof EchoRequestResponse) {
+                handleEchoRequestReponse((EchoRequestResponse) packet);
+                return;
+            }
         }
     }
 

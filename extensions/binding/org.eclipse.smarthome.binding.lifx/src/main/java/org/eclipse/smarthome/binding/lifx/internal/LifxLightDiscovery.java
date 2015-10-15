@@ -9,10 +9,10 @@ package org.eclipse.smarthome.binding.lifx.internal;
 
 import java.net.DatagramPacket;
 import java.net.Inet4Address;
+import java.net.InetAddress;
 import java.net.InetSocketAddress;
 import java.net.InterfaceAddress;
 import java.net.NetworkInterface;
-import java.net.SocketAddress;
 import java.net.SocketTimeoutException;
 import java.net.StandardProtocolFamily;
 import java.net.StandardSocketOptions;
@@ -54,6 +54,7 @@ public class LifxLightDiscovery extends AbstractDiscoveryService {
     private Logger logger = LoggerFactory.getLogger(LifxLightDiscovery.class);
 
     private List<InetSocketAddress> broadcastAddresses;
+    private List<InetAddress> interfaceAddresses;
     private final int BROADCAST_PORT = 56700;
     private static int BUFFER_SIZE = 255;
     private static int REFRESH_INTERVAL = 60;
@@ -77,7 +78,7 @@ public class LifxLightDiscovery extends AbstractDiscoveryService {
 
     @Override
     protected void startBackgroundDiscovery() {
-        logger.debug("Starting LIFX device background discovery");
+        logger.debug("Starting the LIFX device background discovery");
 
         Runnable discoveryRunnable = new Runnable() {
             @Override
@@ -87,7 +88,7 @@ public class LifxLightDiscovery extends AbstractDiscoveryService {
         };
 
         if (discoveryJob == null || discoveryJob.isCancelled()) {
-            discoveryJob = scheduler.scheduleAtFixedRate(discoveryRunnable, 0, REFRESH_INTERVAL, TimeUnit.SECONDS);
+            discoveryJob = scheduler.scheduleWithFixedDelay(discoveryRunnable, 0, REFRESH_INTERVAL, TimeUnit.SECONDS);
         }
     }
 
@@ -104,6 +105,7 @@ public class LifxLightDiscovery extends AbstractDiscoveryService {
 
         try {
             broadcastAddresses = new ArrayList<InetSocketAddress>();
+            interfaceAddresses = new ArrayList<InetAddress>();
 
             Enumeration<NetworkInterface> networkInterfaces = NetworkInterface.getNetworkInterfaces();
             while (networkInterfaces.hasMoreElements()) {
@@ -111,7 +113,12 @@ public class LifxLightDiscovery extends AbstractDiscoveryService {
                 if (iface.isUp() && !iface.isLoopback()) {
                     for (InterfaceAddress ifaceAddr : iface.getInterfaceAddresses()) {
                         if (ifaceAddr.getAddress() instanceof Inet4Address) {
-                            broadcastAddresses.add(new InetSocketAddress(ifaceAddr.getBroadcast(), BROADCAST_PORT));
+                            logger.debug("Adding '{}' as interface address", ifaceAddr.getAddress());
+                            interfaceAddresses.add(ifaceAddr.getAddress());
+                            if (ifaceAddr.getBroadcast() != null) {
+                                logger.debug("Adding '{}' as broadcast address", ifaceAddr.getBroadcast());
+                                broadcastAddresses.add(new InetSocketAddress(ifaceAddr.getBroadcast(), BROADCAST_PORT));
+                            }
                         }
                     }
                 }
@@ -134,46 +141,50 @@ public class LifxLightDiscovery extends AbstractDiscoveryService {
             }
 
             ByteBuffer readBuffer = ByteBuffer.allocate(BUFFER_SIZE);
-            SocketAddress address = null;
+            InetAddress address = null;
             try {
                 DatagramPacket p = new DatagramPacket(readBuffer.array(), readBuffer.array().length);
                 broadcastChannel.socket().receive(p);
-                address = p.getSocketAddress();
+                address = p.getAddress();
             } catch (SocketTimeoutException e) {
                 address = null;
             }
 
             while (address != null) {
 
-                readBuffer.rewind();
+                if (!interfaceAddresses.contains(address)) {
+                    readBuffer.rewind();
 
-                ByteBuffer packetType = readBuffer.slice();
-                packetType.position(32);
-                packetType.limit(34);
+                    ByteBuffer packetType = readBuffer.slice();
+                    packetType.position(32);
+                    packetType.limit(34);
 
-                int type = Packet.FIELD_PACKET_TYPE.value(packetType);
+                    int type = Packet.FIELD_PACKET_TYPE.value(packetType);
 
-                PacketHandler handler = PacketFactory.createHandler(type);
+                    PacketHandler handler = PacketFactory.createHandler(type);
 
-                if (handler == null) {
-                    continue;
+                    if (handler == null) {
+                        continue;
+                    }
+
+                    Packet returnedPacket = handler.handle(readBuffer);
+
+                    if (returnedPacket instanceof StateServiceResponse) {
+                        DiscoveryResult discoveryResult = createDiscoveryResult((StateServiceResponse) returnedPacket);
+                        thingDiscovered(discoveryResult);
+                    }
+
+                    readBuffer.clear();
                 }
 
-                Packet returnedPacket = handler.handle(readBuffer);
-
-                if (returnedPacket instanceof StateServiceResponse) {
-                    DiscoveryResult discoveryResult = createDiscoveryResult((StateServiceResponse) returnedPacket);
-                    thingDiscovered(discoveryResult);
-                }
-
-                readBuffer.clear();
                 try {
                     DatagramPacket p = new DatagramPacket(readBuffer.array(), readBuffer.array().length);
                     broadcastChannel.socket().receive(p);
-                    address = p.getSocketAddress();
+                    address = p.getAddress();
                 } catch (SocketTimeoutException e) {
                     address = null;
                 }
+
             }
         } catch (Exception e) {
             logger.debug("An exception occurred while discovering LIFX lights : '{}", e.getMessage());
