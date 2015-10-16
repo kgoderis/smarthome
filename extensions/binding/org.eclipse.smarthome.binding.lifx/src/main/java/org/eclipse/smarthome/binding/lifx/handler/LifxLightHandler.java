@@ -80,7 +80,6 @@ public class LifxLightHandler extends BaseThingHandler {
     private static final double INCREASE_DECREASE_STEP = 0.10;
     private final int BROADCAST_PORT = 56700;
     private static long NETWORK_INTERVAL = 50;
-    private static int BUFFER_SIZE = 255;
     private static int POLLING_INTERVAL = 15;
     private static int MAXIMUM_POLLING_RETRIES = 2;
 
@@ -105,6 +104,7 @@ public class LifxLightHandler extends BaseThingHandler {
     private List<InetSocketAddress> broadcastAddresses;
     private List<InetAddress> interfaceAddresses;
     private ConcurrentHashMap<Integer, Packet> sentPackets = new ConcurrentHashMap<Integer, Packet>();
+    private int bufferSize = 0;
 
     public LifxLightHandler(Thing thing) {
         super(thing);
@@ -149,7 +149,11 @@ public class LifxLightHandler extends BaseThingHandler {
                 if (iface.isUp() && !iface.isLoopback()) {
                     for (InterfaceAddress ifaceAddr : iface.getInterfaceAddresses()) {
                         if (ifaceAddr.getAddress() instanceof Inet4Address) {
-                            logger.debug("Adding '{}' as interface address", ifaceAddr.getAddress());
+                            logger.debug("Adding '{}' as interface address with MTU {}", ifaceAddr.getAddress(),
+                                    iface.getMTU());
+                            if (iface.getMTU() > bufferSize) {
+                                bufferSize = iface.getMTU();
+                            }
                             interfaceAddresses.add(ifaceAddr.getAddress());
                             if (ifaceAddr.getBroadcast() != null) {
                                 logger.debug("Adding '{}' as broadcast address", ifaceAddr.getBroadcast());
@@ -304,8 +308,9 @@ public class LifxLightHandler extends BaseThingHandler {
                             // a channel is ready for reading
                             SelectableChannel channel = key.channel();
                             InetSocketAddress address = null;
+                            int messageLength = 0;
 
-                            ByteBuffer readBuffer = ByteBuffer.allocate(BUFFER_SIZE);
+                            ByteBuffer readBuffer = ByteBuffer.allocate(bufferSize);
                             try {
                                 if (channel instanceof DatagramChannel) {
                                     address = (InetSocketAddress) ((DatagramChannel) channel).receive(readBuffer);
@@ -313,6 +318,7 @@ public class LifxLightHandler extends BaseThingHandler {
                                     address = (InetSocketAddress) ((SocketChannel) channel).getRemoteAddress();
                                     ((SocketChannel) channel).read(readBuffer);
                                 }
+                                messageLength = readBuffer.position();
                             } catch (Exception e) {
                                 logger.warn("An exception occurred while reading data : '{}'", e.getMessage());
                             }
@@ -321,25 +327,33 @@ public class LifxLightHandler extends BaseThingHandler {
 
                                 readBuffer.rewind();
 
-                                ByteBuffer packetType = readBuffer.slice();
-                                packetType.position(32);
-                                packetType.limit(34);
+                                ByteBuffer packetSize = readBuffer.slice();
+                                packetSize.position(0);
+                                packetSize.limit(2);
+                                int size = Packet.FIELD_SIZE.value(packetSize);
 
-                                int type = Packet.FIELD_PACKET_TYPE.value(packetType);
+                                if (messageLength == size) {
 
-                                PacketHandler handler = PacketFactory.createHandler(type);
+                                    ByteBuffer packetType = readBuffer.slice();
+                                    packetType.position(32);
+                                    packetType.limit(34);
+                                    int type = Packet.FIELD_PACKET_TYPE.value(packetType);
 
-                                if (handler == null) {
-                                    logger.trace("Unknown packet type: {} (source: {})", String.format("0x%02X", type),
-                                            address.toString());
-                                    continue;
-                                }
+                                    PacketHandler handler = PacketFactory.createHandler(type);
 
-                                Packet packet = handler.handle(readBuffer);
-                                if (packet == null) {
-                                    logger.warn("Handler {} was unable to handle packet", handler.getClass().getName());
-                                } else {
-                                    handlePacket(packet, address);
+                                    if (handler == null) {
+                                        logger.trace("Unknown packet type: {} (source: {})",
+                                                String.format("0x%02X", type), address.toString());
+                                        continue;
+                                    }
+
+                                    Packet packet = handler.handle(readBuffer);
+                                    if (packet == null) {
+                                        logger.warn("Handler {} was unable to handle packet",
+                                                handler.getClass().getName());
+                                    } else {
+                                        handlePacket(packet, address);
+                                    }
                                 }
                             }
                         } else if (key.isValid() && key.isWritable()) {

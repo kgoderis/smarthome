@@ -56,7 +56,6 @@ public class LifxLightDiscovery extends AbstractDiscoveryService {
     private List<InetSocketAddress> broadcastAddresses;
     private List<InetAddress> interfaceAddresses;
     private final int BROADCAST_PORT = 56700;
-    private static int BUFFER_SIZE = 255;
     private static int REFRESH_INTERVAL = 60;
     private static int BROADCAST_TIMEOUT = 5000;
 
@@ -106,6 +105,7 @@ public class LifxLightDiscovery extends AbstractDiscoveryService {
         try {
             broadcastAddresses = new ArrayList<InetSocketAddress>();
             interfaceAddresses = new ArrayList<InetAddress>();
+            int bufferSize = 0;
 
             Enumeration<NetworkInterface> networkInterfaces = NetworkInterface.getNetworkInterfaces();
             while (networkInterfaces.hasMoreElements()) {
@@ -113,7 +113,11 @@ public class LifxLightDiscovery extends AbstractDiscoveryService {
                 if (iface.isUp() && !iface.isLoopback()) {
                     for (InterfaceAddress ifaceAddr : iface.getInterfaceAddresses()) {
                         if (ifaceAddr.getAddress() instanceof Inet4Address) {
-                            logger.debug("Adding '{}' as interface address", ifaceAddr.getAddress());
+                            logger.debug("Adding '{}' as interface address with MTU {}", ifaceAddr.getAddress(),
+                                    iface.getMTU());
+                            if (iface.getMTU() > bufferSize) {
+                                bufferSize = iface.getMTU();
+                            }
                             interfaceAddresses.add(ifaceAddr.getAddress());
                             if (ifaceAddr.getBroadcast() != null) {
                                 logger.debug("Adding '{}' as broadcast address", ifaceAddr.getBroadcast());
@@ -140,48 +144,64 @@ public class LifxLightDiscovery extends AbstractDiscoveryService {
                 broadcastChannel.send(packet.bytes(), address);
             }
 
-            ByteBuffer readBuffer = ByteBuffer.allocate(BUFFER_SIZE);
+            ByteBuffer readBuffer = ByteBuffer.allocate(bufferSize);
+            int datagramLength = 0;
             InetAddress address = null;
             try {
                 DatagramPacket p = new DatagramPacket(readBuffer.array(), readBuffer.array().length);
                 broadcastChannel.socket().receive(p);
+                datagramLength = p.getLength();
                 address = p.getAddress();
             } catch (SocketTimeoutException e) {
                 address = null;
             }
 
             while (address != null) {
+
                 if (!interfaceAddresses.contains(address)) {
                     readBuffer.rewind();
 
-                    ByteBuffer packetType = readBuffer.slice();
-                    packetType.position(32);
-                    packetType.limit(34);
+                    ByteBuffer packetSize = readBuffer.slice();
+                    packetSize.position(0);
+                    packetSize.limit(2);
+                    int size = Packet.FIELD_SIZE.value(packetSize);
 
-                    int type = Packet.FIELD_PACKET_TYPE.value(packetType);
+                    if (datagramLength == size) {
 
-                    PacketHandler handler = PacketFactory.createHandler(type);
+                        ByteBuffer packetType = readBuffer.slice();
+                        packetType.position(32);
+                        packetType.limit(34);
+                        int type = Packet.FIELD_PACKET_TYPE.value(packetType);
 
-                    if (handler == null) {
-                        continue;
-                    }
+                        if (type == StateServiceResponse.TYPE) {
 
-                    Packet returnedPacket = handler.handle(readBuffer);
+                            PacketHandler handler = PacketFactory.createHandler(type);
 
-                    if (returnedPacket instanceof StateServiceResponse) {
-                        DiscoveryResult discoveryResult = createDiscoveryResult((StateServiceResponse) returnedPacket);
-                        thingDiscovered(discoveryResult);
+                            if (handler == null) {
+                                continue;
+                            }
+
+                            Packet returnedPacket = handler.handle(readBuffer);
+
+                            if (returnedPacket instanceof StateServiceResponse) {
+                                DiscoveryResult discoveryResult = createDiscoveryResult(
+                                        (StateServiceResponse) returnedPacket);
+                                thingDiscovered(discoveryResult);
+                            }
+                        }
                     }
 
                     readBuffer.clear();
+
                 }
 
                 try {
-                    readBuffer = ByteBuffer.allocate(BUFFER_SIZE);
+                    readBuffer = ByteBuffer.allocate(bufferSize);
                     DatagramPacket p = new DatagramPacket(readBuffer.array(), readBuffer.array().length);
                     broadcastChannel.socket().receive(p);
+                    datagramLength = p.getLength();
                     address = p.getAddress();
-                } catch (SocketTimeoutException e) {
+                } catch (Exception e) {
                     address = null;
                 }
 
