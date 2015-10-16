@@ -151,7 +151,6 @@ public class LifxLightDiscovery extends AbstractDiscoveryService {
             }
 
             while (address != null) {
-
                 if (!interfaceAddresses.contains(address)) {
                     readBuffer.rewind();
 
@@ -178,6 +177,7 @@ public class LifxLightDiscovery extends AbstractDiscoveryService {
                 }
 
                 try {
+                    readBuffer = ByteBuffer.allocate(BUFFER_SIZE);
                     DatagramPacket p = new DatagramPacket(readBuffer.array(), readBuffer.array().length);
                     broadcastChannel.socket().receive(p);
                     address = p.getAddress();
