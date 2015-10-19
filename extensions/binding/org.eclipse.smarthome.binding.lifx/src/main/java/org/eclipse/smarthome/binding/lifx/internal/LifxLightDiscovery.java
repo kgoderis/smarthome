@@ -22,6 +22,7 @@ import java.util.ArrayList;
 import java.util.Enumeration;
 import java.util.List;
 import java.util.Map;
+import java.util.UUID;
 import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.TimeUnit;
 
@@ -135,10 +136,15 @@ public class LifxLightDiscovery extends AbstractDiscoveryService {
             broadcastChannel.socket().setSoTimeout(BROADCAST_TIMEOUT);
             broadcastChannel.bind(new InetSocketAddress(BROADCAST_PORT));
 
+            logger.debug("socket bound to {}", broadcastChannel.getLocalAddress().toString());
+
+            long source = UUID.randomUUID().getLeastSignificantBits() & (-1L >>> 32);
+            logger.debug("The LIFX discovery service will use '{}' as source identifier", Long.toString(source, 16));
+
             // look for lights on the network
             GetServiceRequest packet = new GetServiceRequest();
             packet.setSequence(0);
-            packet.setSource(0);
+            packet.setSource(source);
 
             for (InetSocketAddress address : broadcastAddresses) {
                 broadcastChannel.send(packet.bytes(), address);
@@ -192,7 +198,6 @@ public class LifxLightDiscovery extends AbstractDiscoveryService {
                     }
 
                     readBuffer.clear();
-
                 }
 
                 try {
@@ -206,6 +211,9 @@ public class LifxLightDiscovery extends AbstractDiscoveryService {
                 }
 
             }
+
+            broadcastChannel.close();
+
         } catch (Exception e) {
             logger.debug("An exception occurred while discovering LIFX lights : '{}", e.getMessage());
         }

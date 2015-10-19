@@ -82,6 +82,7 @@ public class LifxLightHandler extends BaseThingHandler {
     private static long NETWORK_INTERVAL = 50;
     private static int POLLING_INTERVAL = 15;
     private static int MAXIMUM_POLLING_RETRIES = 2;
+    private static int lightCounter = 1;
 
     private long source;
     private int service;
@@ -125,6 +126,25 @@ public class LifxLightHandler extends BaseThingHandler {
         } catch (IOException e) {
             logger.warn("An exception occurred while closing the selector : '{}'", e.getMessage());
         }
+
+        if (broadcastKey != null) {
+            try {
+                broadcastKey.channel().close();
+            } catch (IOException e) {
+                // TODO Auto-generated catch block
+                e.printStackTrace();
+            }
+        }
+
+        if (unicastKey != null) {
+            try {
+                unicastKey.channel().close();
+            } catch (IOException e) {
+                // TODO Auto-generated catch block
+                e.printStackTrace();
+            }
+        }
+
     }
 
     @Override
@@ -170,7 +190,10 @@ public class LifxLightHandler extends BaseThingHandler {
                     .setOption(StandardSocketOptions.SO_REUSEADDR, true)
                     .setOption(StandardSocketOptions.SO_BROADCAST, true);
             broadcastChannel.configureBlocking(false);
-            broadcastChannel.bind(new InetSocketAddress(BROADCAST_PORT));
+            lock.lock();
+            broadcastChannel.bind(new InetSocketAddress(BROADCAST_PORT + lightCounter));
+            lightCounter++;
+            lock.unlock();
             broadcastKey = broadcastChannel.register(selector, SelectionKey.OP_READ | SelectionKey.OP_WRITE);
 
             updateStatus(ThingStatus.OFFLINE, ThingStatusDetail.CONFIGURATION_PENDING);
@@ -428,7 +451,7 @@ public class LifxLightHandler extends BaseThingHandler {
         }
 
         packet.setSequence(sequenceNumber);
-        packet.setSource(0);
+        packet.setSource(source);
 
         for (InetSocketAddress address : broadcastAddresses) {
             boolean result = false;
@@ -466,9 +489,10 @@ public class LifxLightHandler extends BaseThingHandler {
                     SelectableChannel channel = key.channel();
                     try {
                         if (channel instanceof DatagramChannel) {
-                            logger.debug("Sending packet type '{}' to '{}' for '{}' with sequence '{}' and source '{}'",
-                                    new Object[] { packet.getClass().getSimpleName(), address.toString(),
-                                            packet.getTarget().getHex(), packet.getSequence(),
+                            logger.debug(
+                                    "{} : Sending packet type '{}' to '{}' for '{}' with sequence '{}' and source '{}'",
+                                    new Object[] { macAddress.getHex(), packet.getClass().getSimpleName(),
+                                            address.toString(), packet.getTarget().getHex(), packet.getSequence(),
                                             Long.toString(packet.getSource(), 16) });
                             int number = ((DatagramChannel) channel).send(packet.bytes(), address);
                             if (packet.getResponseRequired()) {
@@ -497,9 +521,9 @@ public class LifxLightHandler extends BaseThingHandler {
         if ((packet.getTarget().equals(macAddress) || packet.getTarget().equals(broadcastAddress))
                 && (packet.getSource() == source || packet.getSource() == 0)) {
 
-            logger.debug("Packet type '{}' received from '{}' for '{}' with sequence '{}' and source '{}'",
-                    new Object[] { packet.getClass().getSimpleName(), address.toString(), packet.getTarget().getHex(),
-                            packet.getSequence(), Long.toString(packet.getSource(), 16) });
+            logger.debug("{} : Packet type '{}' received from '{}' for '{}' with sequence '{}' and source '{}'",
+                    new Object[] { macAddress.getHex(), packet.getClass().getSimpleName(), address.toString(),
+                            packet.getTarget().getHex(), packet.getSequence(), Long.toString(packet.getSource(), 16) });
 
             Packet originalPacket = sentPackets.get(packet.getSequence());
             if (originalPacket != null) {
