@@ -136,8 +136,6 @@ public class LifxLightDiscovery extends AbstractDiscoveryService {
             broadcastChannel.socket().setSoTimeout(BROADCAST_TIMEOUT);
             broadcastChannel.bind(new InetSocketAddress(BROADCAST_PORT));
 
-            logger.debug("socket bound to {}", broadcastChannel.getLocalAddress().toString());
-
             long source = UUID.randomUUID().getLeastSignificantBits() & (-1L >>> 32);
             logger.debug("The LIFX discovery service will use '{}' as source identifier", Long.toString(source, 16));
 

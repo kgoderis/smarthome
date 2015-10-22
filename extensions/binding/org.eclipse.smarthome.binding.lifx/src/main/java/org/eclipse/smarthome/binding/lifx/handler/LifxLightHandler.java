@@ -83,6 +83,7 @@ public class LifxLightHandler extends BaseThingHandler {
     private static int POLLING_INTERVAL = 15;
     private static int MAXIMUM_POLLING_RETRIES = 2;
     private static int lightCounter = 1;
+    private static ReentrantLock lighCounterLock = new ReentrantLock();
 
     private long source;
     private int service;
@@ -151,7 +152,7 @@ public class LifxLightHandler extends BaseThingHandler {
     public void initialize() {
         try {
             macAddress = new MACAddress((String) getConfig().get(LifxBindingConstants.CONFIG_PROPERTY_DEVICE_ID), true);
-            logger.debug("Initializing the LIFX handler for light '{}'.", this.macAddress.getHex());
+            logger.debug("Initializing the LIFX handler for bulb '{}'.", this.macAddress.getHex());
 
             if (networkJob == null || networkJob.isCancelled()) {
                 networkJob = scheduler.scheduleWithFixedDelay(networkRunnable, 0, NETWORK_INTERVAL,
@@ -190,10 +191,11 @@ public class LifxLightHandler extends BaseThingHandler {
                     .setOption(StandardSocketOptions.SO_REUSEADDR, true)
                     .setOption(StandardSocketOptions.SO_BROADCAST, true);
             broadcastChannel.configureBlocking(false);
-            lock.lock();
+            lighCounterLock.lock();
+            logger.debug("Binding the broadcast channel on port {}", BROADCAST_PORT + lightCounter);
             broadcastChannel.bind(new InetSocketAddress(BROADCAST_PORT + lightCounter));
             lightCounter++;
-            lock.unlock();
+            lighCounterLock.unlock();
             broadcastKey = broadcastChannel.register(selector, SelectionKey.OP_READ | SelectionKey.OP_WRITE);
 
             updateStatus(ThingStatus.OFFLINE, ThingStatusDetail.CONFIGURATION_PENDING);
@@ -231,7 +233,7 @@ public class LifxLightHandler extends BaseThingHandler {
                     break;
             }
         } catch (Exception ex) {
-            logger.error("Error while updating light.", ex);
+            logger.error("Error while updating bulb.", ex);
         }
     }
 
@@ -387,34 +389,43 @@ public class LifxLightHandler extends BaseThingHandler {
                     }
                 }
             } catch (Exception e) {
-                logger.error("An exception orccurred while communicating with the light : '{}'", e.getMessage());
+                logger.error("An exception orccurred while communicating with the bulb : '{}'", e.getMessage());
             } finally {
                 lock.unlock();
             }
 
             // poll the device
             if ((System.currentTimeMillis() - lastPollingTimestamp) > POLLING_INTERVAL * 1000) {
-                int counter = 0;
-                for (Packet aPacket : sentPackets.values()) {
-                    if (aPacket instanceof GetEchoRequest) {
-                        counter++;
+                if (getThing().getStatus() != ThingStatus.OFFLINE) {
+                    logger.debug("{} : Polling", macAddress.getHex());
+                    int counter = 0;
+                    for (Packet aPacket : sentPackets.values()) {
+                        if (aPacket instanceof GetEchoRequest) {
+                            counter++;
+                        }
                     }
-                }
 
-                lastPollingTimestamp = System.currentTimeMillis();
+                    lastPollingTimestamp = System.currentTimeMillis();
 
-                if (counter < MAXIMUM_POLLING_RETRIES) {
-                    ByteBuffer payload = ByteBuffer.allocate(Long.SIZE / 8);
-                    payload.putLong(lastPollingTimestamp);
+                    if (counter < MAXIMUM_POLLING_RETRIES) {
+                        ByteBuffer payload = ByteBuffer.allocate(Long.SIZE / 8);
+                        payload.putLong(lastPollingTimestamp);
 
-                    GetEchoRequest request = new GetEchoRequest();
-                    request.setResponseRequired(true);
-                    request.setPayload(payload);
+                        GetEchoRequest request = new GetEchoRequest();
+                        request.setResponseRequired(true);
+                        request.setPayload(payload);
 
-                    sendPacket(request);
+                        sendPacket(request);
+                    } else {
+                        updateStatus(ThingStatus.OFFLINE, ThingStatusDetail.COMMUNICATION_ERROR);
+                        sentPackets.clear();
+                    }
                 } else {
-                    updateStatus(ThingStatus.OFFLINE, ThingStatusDetail.COMMUNICATION_ERROR);
-                    sentPackets.clear();
+                    // are we not configured? let's broadcast instead
+                    logger.debug("{} : The bulb is not online, let's broadcast instead", macAddress.getHex());
+                    lastPollingTimestamp = System.currentTimeMillis();
+                    GetServiceRequest packet = new GetServiceRequest();
+                    broadcastPacket(packet);
                 }
             }
 
@@ -428,7 +439,7 @@ public class LifxLightHandler extends BaseThingHandler {
 
             if (sentPackets.containsKey(sequenceNumber)) {
                 logger.warn(
-                        "A messages with sequence number '{}' has already been sent to the LIFX Light. Is it missing in action? ",
+                        "A messages with sequence number '{}' has already been sent to the bulb. Is it missing in action? ",
                         sequenceNumber);
             }
             packet.setSequence(sequenceNumber);
@@ -446,7 +457,7 @@ public class LifxLightHandler extends BaseThingHandler {
 
         if (sentPackets.containsKey(sequenceNumber)) {
             logger.warn(
-                    "A messages with sequence number '{}' has already been sent to the LIFX Light. Is it missing in action? ",
+                    "A messages with sequence number '{}' has already been sent to the bulb. Is it missing in action? ",
                     sequenceNumber);
         }
 
@@ -508,7 +519,7 @@ public class LifxLightHandler extends BaseThingHandler {
                 }
             }
         } catch (Exception e) {
-            logger.error("An exception occurred while communicating with the light : '{}'", e.getMessage());
+            logger.error("An exception occurred while communicating with the bulb : '{}'", e.getMessage());
         } finally {
             lock.unlock();
         }
@@ -545,7 +556,8 @@ public class LifxLightHandler extends BaseThingHandler {
                 MACAddress discoveredAddress = ((StateServiceResponse) packet).getTarget();
                 if (macAddress.equals(discoveredAddress)) {
                     if (!address.equals(ipAddress) && port != (int) ((StateServiceResponse) packet).getPort()
-                            && service != ((StateServiceResponse) packet).getService()) {
+                            && service != ((StateServiceResponse) packet).getService()
+                            || getThing().getStatus() == ThingStatus.OFFLINE) {
                         this.port = (int) ((StateServiceResponse) packet).getPort();
                         this.service = ((StateServiceResponse) packet).getService();
 
