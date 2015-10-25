@@ -584,8 +584,7 @@ public class LifxLightHandler extends BaseThingHandler {
                                 unicastKey = unicastChannel.register(selector,
                                         SelectionKey.OP_READ | SelectionKey.OP_WRITE);
                                 unicastChannel.connect(ipAddress);
-                                logger.debug("Connected to a light via {}",
-                                        unicastChannel.getLocalAddress().toString());
+                                logger.debug("Connected to a bulb via {}", unicastChannel.getLocalAddress().toString());
                             } catch (Exception e) {
                                 logger.warn("An exception occurred while connectin to the bulb's IP address : '{}'",
                                         e.getMessage());
