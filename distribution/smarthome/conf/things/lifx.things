@@ -1,0 +1,3 @@
+Thing lifx:light:practice [ deviceId="D073D5020B98"]
+Thing lifx:light:livingroomleft [ deviceId="D073D501EB9F"]
+Thing lifx:light:livingroomright [ deviceId="D073D501C593"]
