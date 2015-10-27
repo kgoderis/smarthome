@@ -243,7 +243,7 @@ public class LifxLightDiscovery extends AbstractDiscoveryService {
             label = "LIFX";
 
         return DiscoveryResultBuilder.create(thingUID).withLabel(label)
-                .withProperty(LifxBindingConstants.CONFIG_PROPERTY_DEVICE_ID, discoveredAddress.getHex()).build();
+                .withProperty(LifxBindingConstants.CONFIG_PROPERTY_DEVICE_ID, discoveredAddress.getAsLabel()).build();
     }
 
     private ThingUID getUID(String hex) {

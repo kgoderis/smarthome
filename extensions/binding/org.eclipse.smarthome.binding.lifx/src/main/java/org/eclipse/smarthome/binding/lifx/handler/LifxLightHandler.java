@@ -123,7 +123,9 @@ public class LifxLightHandler extends BaseThingHandler {
         currentPowerState = null;
 
         try {
-            selector.close();
+            if (selector != null) {
+                selector.close();
+            }
         } catch (IOException e) {
             logger.warn("An exception occurred while closing the selector : '{}'", e.getMessage());
         }
