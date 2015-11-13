@@ -36,6 +36,7 @@ import java.util.concurrent.locks.ReentrantLock;
 
 import org.eclipse.smarthome.binding.lifx.LifxBindingConstants;
 import org.eclipse.smarthome.binding.lifx.fields.MACAddress;
+import org.eclipse.smarthome.binding.lifx.internal.LifxNetworkThrottler;
 import org.eclipse.smarthome.binding.lifx.protocol.EchoRequestResponse;
 import org.eclipse.smarthome.binding.lifx.protocol.GetEchoRequest;
 import org.eclipse.smarthome.binding.lifx.protocol.GetLightPowerRequest;
@@ -392,6 +393,7 @@ public class LifxLightHandler extends BaseThingHandler {
                 }
             } catch (Exception e) {
                 logger.error("An exception orccurred while communicating with the bulb : '{}'", e.getMessage());
+                e.printStackTrace();
             } finally {
                 lock.unlock();
             }
@@ -399,7 +401,7 @@ public class LifxLightHandler extends BaseThingHandler {
             // poll the device
             if ((System.currentTimeMillis() - lastPollingTimestamp) > POLLING_INTERVAL * 1000) {
                 if (getThing().getStatus() != ThingStatus.OFFLINE) {
-                    logger.debug("{} : Polling", macAddress.getHex());
+                    logger.trace("{} : Polling", macAddress.getHex());
                     int counter = 0;
                     for (Packet aPacket : sentPackets.values()) {
                         if (aPacket instanceof GetEchoRequest) {
@@ -502,9 +504,12 @@ public class LifxLightHandler extends BaseThingHandler {
                     SelectableChannel channel = key.channel();
                     try {
                         if (channel instanceof DatagramChannel) {
+                            LifxNetworkThrottler.lockNetwork();
                             logger.debug(
-                                    "{} : Sending packet type '{}' to '{}' for '{}' with sequence '{}' and source '{}'",
+                                    "{} : Sending packet type '{}' from '{}' to '{}' for '{}' with sequence '{}' and source '{}'",
                                     new Object[] { macAddress.getHex(), packet.getClass().getSimpleName(),
+                                            ((InetSocketAddress) ((DatagramChannel) channel).getLocalAddress())
+                                                    .toString(),
                                             address.toString(), packet.getTarget().getHex(), packet.getSequence(),
                                             Long.toString(packet.getSource(), 16) });
                             int number = ((DatagramChannel) channel).send(packet.bytes(), address);
@@ -512,6 +517,7 @@ public class LifxLightHandler extends BaseThingHandler {
                                 sentPackets.put(packet.getSequence(), packet);
                             }
                             result = true;
+                            LifxNetworkThrottler.unlockNetwork();
                         } else if (channel instanceof SocketChannel) {
                             ((SocketChannel) channel).write(packet.bytes());
                         }
@@ -540,15 +546,15 @@ public class LifxLightHandler extends BaseThingHandler {
 
             Packet originalPacket = sentPackets.get(packet.getSequence());
             if (originalPacket != null) {
-                logger.debug("Packet is a response to a packet of type '{}' with sequence number '{}'",
+                logger.trace("Packet is a response to a packet of type '{}' with sequence number '{}'",
                         originalPacket.getClass().getSimpleName(), packet.getSequence());
-                logger.debug("This response was {}expected",
+                logger.trace("This response was {}expected",
                         originalPacket.isExpectedResponse(packet.getPacketType()) ? "" : "not ");
                 if (originalPacket.isFulfilled(packet)) {
                     sentPackets.remove(packet.getSequence());
-                    logger.debug("There are now {} unanswered packets remaining", sentPackets.size());
+                    logger.trace("There are now {} unanswered packets remaining", sentPackets.size());
                     for (Packet aPacket : sentPackets.values()) {
-                        logger.debug("sentPackets contains {} with sequence number {}",
+                        logger.trace("sentPackets contains {} with sequence number {}",
                                 aPacket.getClass().getSimpleName(), aPacket.getSequence());
                     }
                 }

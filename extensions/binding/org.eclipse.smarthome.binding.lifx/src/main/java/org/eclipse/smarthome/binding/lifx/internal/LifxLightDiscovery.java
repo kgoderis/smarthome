@@ -145,7 +145,9 @@ public class LifxLightDiscovery extends AbstractDiscoveryService {
             packet.setSource(source);
 
             for (InetSocketAddress address : broadcastAddresses) {
+                LifxNetworkThrottler.lockNetwork();
                 broadcastChannel.send(packet.bytes(), address);
+                LifxNetworkThrottler.unlockNetwork();
             }
 
             ByteBuffer readBuffer = ByteBuffer.allocate(bufferSize);
@@ -187,7 +189,8 @@ public class LifxLightDiscovery extends AbstractDiscoveryService {
 
                             Packet returnedPacket = handler.handle(readBuffer);
 
-                            if (returnedPacket instanceof StateServiceResponse) {
+                            if (returnedPacket instanceof StateServiceResponse
+                                    && returnedPacket.getSource() == source) {
                                 DiscoveryResult discoveryResult = createDiscoveryResult(
                                         (StateServiceResponse) returnedPacket);
                                 thingDiscovered(discoveryResult);
@@ -240,7 +243,7 @@ public class LifxLightDiscovery extends AbstractDiscoveryService {
         String label = "";
 
         if (StringUtils.isBlank(label))
-            label = "LIFX";
+            label = "LIFX " + discoveredAddress.getAsLabel();
 
         return DiscoveryResultBuilder.create(thingUID).withLabel(label)
                 .withProperty(LifxBindingConstants.CONFIG_PROPERTY_DEVICE_ID, discoveredAddress.getAsLabel()).build();
