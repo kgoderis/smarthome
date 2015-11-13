@@ -81,7 +81,8 @@ public class LifxLightHandler extends BaseThingHandler {
     private static final double INCREASE_DECREASE_STEP = 0.10;
     private final int BROADCAST_PORT = 56700;
     private static long NETWORK_INTERVAL = 50;
-    private static int POLLING_INTERVAL = 15;
+    private static int ECHO_POLLING_INTERVAL = 15;
+    private static int STATE_POLLING_INTERVAL = 3;
     private static int MAXIMUM_POLLING_RETRIES = 2;
     private static int lightCounter = 1;
     private static ReentrantLock lighCounterLock = new ReentrantLock();
@@ -98,7 +99,8 @@ public class LifxLightHandler extends BaseThingHandler {
     private Selector selector;
     private ScheduledFuture<?> networkJob;
     private ReentrantLock lock = new ReentrantLock();
-    private long lastPollingTimestamp = 0;
+    private long lastEchoPollingTimestamp = 0;
+    private long lastStatePollingTimestamp = 0;
 
     private InetSocketAddress ipAddress = null;
     private DatagramChannel unicastChannel = null;
@@ -399,7 +401,7 @@ public class LifxLightHandler extends BaseThingHandler {
             }
 
             // poll the device
-            if ((System.currentTimeMillis() - lastPollingTimestamp) > POLLING_INTERVAL * 1000) {
+            if ((System.currentTimeMillis() - lastEchoPollingTimestamp) > ECHO_POLLING_INTERVAL * 1000) {
                 if (getThing().getStatus() != ThingStatus.OFFLINE) {
                     logger.trace("{} : Polling", macAddress.getHex());
                     int counter = 0;
@@ -409,11 +411,11 @@ public class LifxLightHandler extends BaseThingHandler {
                         }
                     }
 
-                    lastPollingTimestamp = System.currentTimeMillis();
+                    lastEchoPollingTimestamp = System.currentTimeMillis();
 
                     if (counter < MAXIMUM_POLLING_RETRIES) {
                         ByteBuffer payload = ByteBuffer.allocate(Long.SIZE / 8);
-                        payload.putLong(lastPollingTimestamp);
+                        payload.putLong(lastEchoPollingTimestamp);
 
                         GetEchoRequest request = new GetEchoRequest();
                         request.setResponseRequired(true);
@@ -426,10 +428,26 @@ public class LifxLightHandler extends BaseThingHandler {
                     }
                 } else {
                     // are we not configured? let's broadcast instead
-                    logger.debug("{} : The bulb is not online, let's broadcast instead", macAddress.getHex());
-                    lastPollingTimestamp = System.currentTimeMillis();
+                    logger.trace("{} : The bulb is not online, let's broadcast instead", macAddress.getHex());
+                    lastEchoPollingTimestamp = System.currentTimeMillis();
                     GetServiceRequest packet = new GetServiceRequest();
                     broadcastPacket(packet);
+                }
+            }
+
+            if ((System.currentTimeMillis() - lastStatePollingTimestamp) > STATE_POLLING_INTERVAL * 1000) {
+                if (getThing().getStatus() != ThingStatus.OFFLINE) {
+                    logger.trace("{} : Polling the state of the bulb", macAddress.getHex());
+                    lastStatePollingTimestamp = System.currentTimeMillis();
+
+                    GetLightPowerRequest powerPacket = new GetLightPowerRequest();
+                    sendPacket(powerPacket);
+
+                    GetRequest colorPacket = new GetRequest();
+                    sendPacket(colorPacket);
+                } else {
+                    logger.trace("{} : The bulb is not online, there is not point polling it", macAddress.getHex());
+                    lastStatePollingTimestamp = System.currentTimeMillis();
                 }
             }
 
@@ -592,7 +610,7 @@ public class LifxLightHandler extends BaseThingHandler {
                                 unicastKey = unicastChannel.register(selector,
                                         SelectionKey.OP_READ | SelectionKey.OP_WRITE);
                                 unicastChannel.connect(ipAddress);
-                                logger.debug("Connected to a bulb via {}", unicastChannel.getLocalAddress().toString());
+                                logger.trace("Connected to a bulb via {}", unicastChannel.getLocalAddress().toString());
                             } catch (Exception e) {
                                 logger.warn("An exception occurred while connectin to the bulb's IP address : '{}'",
                                         e.getMessage());
