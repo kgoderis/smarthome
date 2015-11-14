@@ -145,9 +145,9 @@ public class LifxLightDiscovery extends AbstractDiscoveryService {
             packet.setSource(source);
 
             for (InetSocketAddress address : broadcastAddresses) {
-                LifxNetworkThrottler.lockNetwork();
+                LifxNetworkThrottler.lock();
                 broadcastChannel.send(packet.bytes(), address);
-                LifxNetworkThrottler.unlockNetwork();
+                LifxNetworkThrottler.unlock();
             }
 
             ByteBuffer readBuffer = ByteBuffer.allocate(bufferSize);

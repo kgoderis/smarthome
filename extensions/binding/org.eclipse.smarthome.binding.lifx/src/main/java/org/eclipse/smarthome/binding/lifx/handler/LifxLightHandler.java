@@ -466,7 +466,9 @@ public class LifxLightHandler extends BaseThingHandler {
             }
             packet.setSequence(sequenceNumber);
 
+            LifxNetworkThrottler.lock(macAddress.getAsLabel());
             sendPacket(packet, ipAddress, unicastKey);
+            LifxNetworkThrottler.unlock(macAddress.getAsLabel());
 
             sequenceNumber++;
             if (sequenceNumber > 255) {
@@ -489,7 +491,9 @@ public class LifxLightHandler extends BaseThingHandler {
         for (InetSocketAddress address : broadcastAddresses) {
             boolean result = false;
             while (!result) {
+                LifxNetworkThrottler.lock();
                 result = sendPacket(packet, address, broadcastKey);
+                LifxNetworkThrottler.unlock();
             }
         }
 
@@ -522,7 +526,6 @@ public class LifxLightHandler extends BaseThingHandler {
                     SelectableChannel channel = key.channel();
                     try {
                         if (channel instanceof DatagramChannel) {
-                            LifxNetworkThrottler.lockNetwork();
                             logger.debug(
                                     "{} : Sending packet type '{}' from '{}' to '{}' for '{}' with sequence '{}' and source '{}'",
                                     new Object[] { macAddress.getHex(), packet.getClass().getSimpleName(),
@@ -535,7 +538,6 @@ public class LifxLightHandler extends BaseThingHandler {
                                 sentPackets.put(packet.getSequence(), packet);
                             }
                             result = true;
-                            LifxNetworkThrottler.unlockNetwork();
                         } else if (channel instanceof SocketChannel) {
                             ((SocketChannel) channel).write(packet.bytes());
                         }
