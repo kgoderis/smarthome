@@ -510,39 +510,44 @@ public class LifxLightHandler extends BaseThingHandler {
         try {
             lock.lock();
 
-            try {
-                selector.selectNow();
-            } catch (IOException e) {
-                logger.error("An exception occurred while selecting: {}", e.getMessage());
-            }
+            boolean sent = false;
 
-            Set<SelectionKey> selectedKeys = selector.selectedKeys();
-            Iterator<SelectionKey> keyIterator = selectedKeys.iterator();
+            while (!sent) {
+                try {
+                    selector.selectNow();
+                } catch (IOException e) {
+                    logger.error("An exception occurred while selecting: {}", e.getMessage());
+                }
 
-            while (keyIterator.hasNext()) {
-                SelectionKey key = keyIterator.next();
+                Set<SelectionKey> selectedKeys = selector.selectedKeys();
+                Iterator<SelectionKey> keyIterator = selectedKeys.iterator();
 
-                if (key.isValid() && key.isWritable() && key.equals(selectedKey)) {
-                    SelectableChannel channel = key.channel();
-                    try {
-                        if (channel instanceof DatagramChannel) {
-                            logger.debug(
-                                    "{} : Sending packet type '{}' from '{}' to '{}' for '{}' with sequence '{}' and source '{}'",
-                                    new Object[] { macAddress.getHex(), packet.getClass().getSimpleName(),
-                                            ((InetSocketAddress) ((DatagramChannel) channel).getLocalAddress())
-                                                    .toString(),
-                                            address.toString(), packet.getTarget().getHex(), packet.getSequence(),
-                                            Long.toString(packet.getSource(), 16) });
-                            int number = ((DatagramChannel) channel).send(packet.bytes(), address);
-                            if (packet.getResponseRequired()) {
-                                sentPackets.put(packet.getSequence(), packet);
+                while (keyIterator.hasNext()) {
+                    SelectionKey key = keyIterator.next();
+
+                    if (key.isValid() && key.isWritable() && key.equals(selectedKey)) {
+                        SelectableChannel channel = key.channel();
+                        try {
+                            if (channel instanceof DatagramChannel) {
+                                logger.debug(
+                                        "{} : Sending packet type '{}' from '{}' to '{}' for '{}' with sequence '{}' and source '{}'",
+                                        new Object[] { macAddress.getHex(), packet.getClass().getSimpleName(),
+                                                ((InetSocketAddress) ((DatagramChannel) channel).getLocalAddress())
+                                                        .toString(),
+                                                address.toString(), packet.getTarget().getHex(), packet.getSequence(),
+                                                Long.toString(packet.getSource(), 16) });
+                                int number = ((DatagramChannel) channel).send(packet.bytes(), address);
+                                if (packet.getResponseRequired()) {
+                                    sentPackets.put(packet.getSequence(), packet);
+                                }
+                                sent = true;
+                                result = true;
+                            } else if (channel instanceof SocketChannel) {
+                                ((SocketChannel) channel).write(packet.bytes());
                             }
-                            result = true;
-                        } else if (channel instanceof SocketChannel) {
-                            ((SocketChannel) channel).write(packet.bytes());
+                        } catch (Exception e) {
+                            logger.error("An exception occurred while writing data : '{}'", e.getMessage());
                         }
-                    } catch (Exception e) {
-                        logger.error("An exception occurred while writing data : '{}'", e.getMessage());
                     }
                 }
             }
@@ -566,16 +571,18 @@ public class LifxLightHandler extends BaseThingHandler {
 
             Packet originalPacket = sentPackets.get(packet.getSequence());
             if (originalPacket != null) {
-                logger.trace("Packet is a response to a packet of type '{}' with sequence number '{}'",
-                        originalPacket.getClass().getSimpleName(), packet.getSequence());
-                logger.trace("This response was {}expected",
+                logger.trace("{} : Packet is a response to a packet of type '{}' with sequence number '{}'",
+                        new Object[] { macAddress.getHex(), originalPacket.getClass().getSimpleName(),
+                                packet.getSequence() });
+                logger.trace("{} : This response was {}expected", macAddress.getHex(),
                         originalPacket.isExpectedResponse(packet.getPacketType()) ? "" : "not ");
                 if (originalPacket.isFulfilled(packet)) {
                     sentPackets.remove(packet.getSequence());
-                    logger.trace("There are now {} unanswered packets remaining", sentPackets.size());
+                    logger.trace("{} : There are now {} unanswered packets remaining", macAddress.getHex(),
+                            sentPackets.size());
                     for (Packet aPacket : sentPackets.values()) {
-                        logger.trace("sentPackets contains {} with sequence number {}",
-                                aPacket.getClass().getSimpleName(), aPacket.getSequence());
+                        logger.trace("{} : sentPackets contains {} with sequence number {}", new Object[] {
+                                macAddress.getHex(), aPacket.getClass().getSimpleName(), aPacket.getSequence() });
                     }
                 }
             }
