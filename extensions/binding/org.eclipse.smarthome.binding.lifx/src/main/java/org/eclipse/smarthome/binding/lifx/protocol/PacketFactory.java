@@ -73,6 +73,7 @@ public class PacketFactory {
         register(StatePowerResponse.class);
         register(StateResponse.class);
         register(StateServiceResponse.class);
+        register(StateVersionResponse.class);
         register(StateWifiFirmwareResponse.class);
         register(StateWifiInfoResponse.class);
         register(TagLabelsResponse.class);
