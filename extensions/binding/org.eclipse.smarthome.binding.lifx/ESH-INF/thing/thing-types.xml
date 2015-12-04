@@ -9,6 +9,7 @@
 
         <channels>
             <channel id="color" typeId="color" />
+            <channel id="temperature" typeId="temperature" />
         </channels>
 
         <config-description>
@@ -25,6 +26,13 @@
         <label>Color</label>
         <description>Selects the color of the light</description>
         <category>ColorLight</category>
+    </channel-type>
+    
+    <channel-type id="temperature">
+        <item-type>Number</item-type>
+        <label>Temperature</label>
+        <description>Sets the temperature of the light</description>
+        <category>Temperature</category>
     </channel-type>
 
 </thing:thing-descriptions>

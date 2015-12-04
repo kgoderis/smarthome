@@ -21,6 +21,7 @@ public class LifxBindingConstants {
 
     // List of all Channel IDs
     public final static String CHANNEL_COLOR = "color";
+    public final static String CHANNEL_TEMPERATURE = "temperature";
 
     // config property for the LIFX device id
     public static final String CONFIG_PROPERTY_DEVICE_ID = "deviceId";

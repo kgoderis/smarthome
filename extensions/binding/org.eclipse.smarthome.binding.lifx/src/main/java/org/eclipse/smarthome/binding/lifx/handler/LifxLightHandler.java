@@ -7,7 +7,7 @@
  */
 package org.eclipse.smarthome.binding.lifx.handler;
 
-import static org.eclipse.smarthome.binding.lifx.LifxBindingConstants.CHANNEL_COLOR;
+import static org.eclipse.smarthome.binding.lifx.LifxBindingConstants.*;
 
 import java.io.IOException;
 import java.net.Inet4Address;
@@ -95,6 +95,7 @@ public class LifxLightHandler extends BaseThingHandler {
     private int sequenceNumber = 1;
     private PowerState currentPowerState;
     private HSBType currentColorState;
+    private DecimalType currentTempState;
 
     private Selector selector;
     private ScheduledFuture<?> networkJob;
@@ -234,6 +235,11 @@ public class LifxLightHandler extends BaseThingHandler {
                         handleIncreaseDecreaseCommand((IncreaseDecreaseType) command);
                     }
                     break;
+                case CHANNEL_TEMPERATURE:
+                    if (command instanceof DecimalType) {
+                        handleTemperatureCommand((DecimalType) command);
+                    }
+                    break;
                 default:
                     break;
             }
@@ -242,10 +248,23 @@ public class LifxLightHandler extends BaseThingHandler {
         }
     }
 
+    private void handleTemperatureCommand(DecimalType temperature) {
+        SetColorRequest packet = new SetColorRequest((int) (currentColorState.getHue().floatValue() / 360 * 65535.0f),
+                (int) (currentColorState.getSaturation().floatValue() / 100 * 65535.0f),
+                (int) (currentColorState.getBrightness().floatValue() / 100 * 65535.0f), temperature.intValue(), 0);
+        packet.setResponseRequired(false);
+        sendPacket(packet);
+
+        // the LIFX LAN protocol spec indicates that the response returned for a request would be the
+        // previous value, so we explicitely demand for the latest value
+        GetRequest colorPacket = new GetRequest();
+        sendPacket(colorPacket);
+    }
+
     private void handleHSBCommand(HSBType hsbType) {
         SetColorRequest packet = new SetColorRequest((int) (hsbType.getHue().floatValue() / 360 * 65535.0f),
                 (int) (hsbType.getSaturation().floatValue() / 100 * 65535.0f),
-                (int) (hsbType.getBrightness().floatValue() / 100 * 65535.0f), 0, 0);
+                (int) (hsbType.getBrightness().floatValue() / 100 * 65535.0f), currentTempState.intValue(), 0);
         packet.setResponseRequired(false);
         sendPacket(packet);
 
@@ -669,9 +688,11 @@ public class LifxLightHandler extends BaseThingHandler {
         DecimalType hue = new DecimalType(packet.getHue() * 360 / 65535.0f);
         PercentType saturation = new PercentType(Math.round((packet.getSaturation() / 65535.0f) * 100));
         PercentType brightness = new PercentType(Math.round((packet.getBrightness() / 65535.0f) * 100));
+        DecimalType temperature = new DecimalType(packet.getKelvin());
 
         currentColorState = new HSBType(hue, saturation, brightness);
         currentPowerState = packet.getPower();
+        currentTempState = temperature;
 
         if (currentPowerState == PowerState.OFF) {
             updateState(CHANNEL_COLOR, OnOffType.OFF);
@@ -680,6 +701,8 @@ public class LifxLightHandler extends BaseThingHandler {
         } else {
             updateState(CHANNEL_COLOR, OnOffType.ON);
         }
+
+        updateState(CHANNEL_TEMPERATURE, temperature);
 
         updateStatus(ThingStatus.ONLINE);
     }

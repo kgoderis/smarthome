@@ -76,22 +76,7 @@ public class SetColorRequest extends Packet {
         this.brightness = brightness;
         this.kelvin = kelvin;
         this.fadeTime = fadeTime;
-
-        // protocol = 0x1400;
     }
-
-    // public SetLightColorRequest(LIFXColor color, long fadeTime) {
-    // this();
-    //
-    // this.fadeTime = fadeTime;
-    //
-    // hue = color.getHue();
-    // saturation = color.getSaturation();
-    // brightness = color.getValue();
-    // kelvin = color.getKelvin();
-    //
-    // protocol = 0x1400;
-    // }
 
     @Override
     public int packetType() {
