@@ -1,0 +1,32 @@
+{  
+   "triggers":[  
+      {  
+         "uid":"RecurrenceTrigger",
+         "label":"Recurrence Trigger",
+         "description":"This triggers a rule based on a RFC 5545 RRULE expression",
+         "configDescriptions":[  
+            {  
+               "name":"RRuleExpression",
+               "type":"TEXT",
+               "label":"RRULE expression",
+               "description":"the RRULE expression",
+               "required":true
+            },
+            {  
+               "name":"RRuleCalendar",
+               "type":"TEXT",
+               "label":"Exception Calendar",
+               "description":"the Calendar containing exception dates",
+               "required":true
+            },
+            {  
+               "name":"StartDate",
+               "type":"TEXT",
+               "label":"Start Date",
+               "description":"the date the recurrence rule will start on",
+               "required":true
+            }
+         ]
+      }
+   ]
+}

@@ -14,6 +14,7 @@ import org.eclipse.smarthome.automation.Module;
 import org.eclipse.smarthome.automation.Trigger;
 import org.eclipse.smarthome.automation.handler.BaseModuleHandlerFactory;
 import org.eclipse.smarthome.automation.handler.ModuleHandler;
+import org.eclipse.smarthome.automation.module.timer.handler.RecurrenceTriggerHandler;
 import org.eclipse.smarthome.automation.module.timer.handler.TimerTriggerHandler;
 import org.osgi.framework.BundleContext;
 import org.slf4j.Logger;
@@ -21,7 +22,7 @@ import org.slf4j.LoggerFactory;
 
 /**
  * This HandlerFactory creates TimerTriggerHandlers to control items within the
- * RuleEngine. 
+ * RuleEngine.
  *
  * @author Christoph Knauf - initial contribution
  *
@@ -30,7 +31,11 @@ public class TimerModuleHandlerFactory extends BaseModuleHandlerFactory {
 
     private Logger logger = LoggerFactory.getLogger(TimerModuleHandlerFactory.class);
 
-    private static final Collection<String> types = Arrays.asList(new String[] { TimerTriggerHandler.MODULE_TYPE_ID });
+    private static final Collection<String> types = Arrays
+            .asList(new String[] { TimerTriggerHandler.MODULE_TYPE_ID, RecurrenceTriggerHandler.MODULE_TYPE_ID });
+
+    public static final String CALLBACK_CONTEXT_NAME = "CALLBACK";
+    public static final String MODULE_CONTEXT_NAME = "MODULE";
 
     public TimerModuleHandlerFactory(BundleContext bundleContext) {
         super(bundleContext);
@@ -53,11 +58,20 @@ public class TimerModuleHandlerFactory extends BaseModuleHandlerFactory {
             if (timerTriggerHandler == null) {
                 timerTriggerHandler = new TimerTriggerHandler((Trigger) module);
                 handlers.put(ruleUID + module.getId(), timerTriggerHandler);
-                return timerTriggerHandler; 
-            } else {
-                logger.error("The ModuleHandler is not supported:" + moduleTypeUID);
+                return timerTriggerHandler;
             }
+        } else if (RecurrenceTriggerHandler.MODULE_TYPE_ID.equals(moduleTypeUID) && module instanceof Trigger) {
+            RecurrenceTriggerHandler recurrenceTriggerHandler = handler != null
+                    && handler instanceof RecurrenceTriggerHandler ? (RecurrenceTriggerHandler) handler : null;
+            if (recurrenceTriggerHandler == null) {
+                recurrenceTriggerHandler = new RecurrenceTriggerHandler((Trigger) module);
+                handlers.put(ruleUID + module.getId(), recurrenceTriggerHandler);
+                return recurrenceTriggerHandler;
+            }
+        } else {
+            logger.error("The ModuleHandler is not supported:" + moduleTypeUID);
         }
+
         return null;
     }
 }

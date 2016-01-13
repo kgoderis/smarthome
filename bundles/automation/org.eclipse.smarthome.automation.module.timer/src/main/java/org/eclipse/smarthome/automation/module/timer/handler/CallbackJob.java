@@ -11,6 +11,7 @@ import java.util.Map;
 
 import org.eclipse.smarthome.automation.Trigger;
 import org.eclipse.smarthome.automation.handler.RuleEngineCallback;
+import org.eclipse.smarthome.automation.module.timer.factory.TimerModuleHandlerFactory;
 import org.quartz.Job;
 import org.quartz.JobExecutionContext;
 import org.quartz.JobExecutionException;
@@ -44,8 +45,8 @@ public class CallbackJob implements Job {
             logger.error("Can't execute CallbackJob. SchedulerContext is null");
         } else {
             RuleEngineCallback callback = (RuleEngineCallback) schedulerContext
-                    .get(TimerTriggerHandler.CALLBACK_CONTEXT_NAME);
-            Trigger module = (Trigger) schedulerContext.get(TimerTriggerHandler.MODULE_CONTEXT_NAME);
+                    .get(TimerModuleHandlerFactory.CALLBACK_CONTEXT_NAME);
+            Trigger module = (Trigger) schedulerContext.get(TimerModuleHandlerFactory.MODULE_CONTEXT_NAME);
             if (callback == null || module == null) {
                 logger.error("Can't execute CallbackJob. Callback or module is null");
             } else {

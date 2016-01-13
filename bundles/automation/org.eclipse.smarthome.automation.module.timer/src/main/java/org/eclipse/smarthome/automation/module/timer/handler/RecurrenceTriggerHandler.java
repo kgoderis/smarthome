@@ -7,6 +7,7 @@
  */
 package org.eclipse.smarthome.automation.module.timer.handler;
 
+import java.util.Date;
 import java.util.UUID;
 
 import org.eclipse.smarthome.automation.Trigger;
@@ -14,8 +15,8 @@ import org.eclipse.smarthome.automation.handler.BaseModuleHandler;
 import org.eclipse.smarthome.automation.handler.RuleEngineCallback;
 import org.eclipse.smarthome.automation.handler.TriggerHandler;
 import org.eclipse.smarthome.automation.module.timer.factory.TimerModuleHandlerFactory;
-import org.quartz.CronScheduleBuilder;
-import org.quartz.CronTrigger;
+import org.eclipse.smarthome.core.scheduler.internal.quartz.RecurrenceRuleScheduleBuilder;
+import org.eclipse.smarthome.core.scheduler.internal.quartz.RecurrenceRuleTrigger;
 import org.quartz.JobBuilder;
 import org.quartz.JobDetail;
 import org.quartz.Scheduler;
@@ -33,23 +34,33 @@ import org.slf4j.LoggerFactory;
  * @author Christoph Knauf - Initial Contribution
  *
  */
-public class TimerTriggerHandler extends BaseModuleHandler<Trigger>implements TriggerHandler {
+public class RecurrenceTriggerHandler extends BaseModuleHandler<Trigger>implements TriggerHandler {
 
-    private final Logger logger = LoggerFactory.getLogger(TimerTriggerHandler.class);
+    private final Logger logger = LoggerFactory.getLogger(RecurrenceTriggerHandler.class);
 
     private RuleEngineCallback callback;
     private JobDetail job;
-    private CronTrigger trigger;
+    private RecurrenceRuleTrigger trigger;
     private Scheduler scheduler;
 
-    public static final String MODULE_TYPE_ID = "TimerTrigger";
-    private static final String CFG_CRON_EXPRESSION = "cronExpression";
+    public static final String MODULE_TYPE_ID = "RecurrenceTrigger";
+    private static final String CFG_RRULE_EXPRESSION = "RRuleExpression";
+    private static final String CFG_RRULE_CALENDAR = "RRuleCalendar";
+    private static final String CFG_START_DATE = "StartDate";
 
-    public TimerTriggerHandler(Trigger module) {
+    public RecurrenceTriggerHandler(Trigger module) {
         super(module);
-        String cronExpression = (String) module.getConfiguration().get(CFG_CRON_EXPRESSION);
-        this.trigger = TriggerBuilder.newTrigger().withIdentity(MODULE_TYPE_ID + UUID.randomUUID().toString())
-                .withSchedule(CronScheduleBuilder.cronSchedule(cronExpression)).build();
+        String recurrenceRuleExpression = (String) module.getConfiguration().get(CFG_RRULE_EXPRESSION);
+        String calendarName = (String) module.getConfiguration().get(CFG_RRULE_CALENDAR);
+        Date date = (Date) module.getConfiguration().get(CFG_START_DATE);
+
+        TriggerBuilder builder = TriggerBuilder.newTrigger().withIdentity(MODULE_TYPE_ID + UUID.randomUUID().toString())
+                .withSchedule(RecurrenceRuleScheduleBuilder.recurrenceRuleSchedule(recurrenceRuleExpression)
+                        .withMisfireHandlingInstructionDoNothing().withStartTime(date));
+        if (calendarName != null) {
+            builder.modifiedByCalendar(calendarName);
+        }
+        this.trigger = (RecurrenceRuleTrigger) builder.build();
     }
 
     @Override
