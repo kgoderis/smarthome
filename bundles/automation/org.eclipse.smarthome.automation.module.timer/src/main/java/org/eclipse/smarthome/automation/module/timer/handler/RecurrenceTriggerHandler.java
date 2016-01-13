@@ -8,13 +8,14 @@
 package org.eclipse.smarthome.automation.module.timer.handler;
 
 import java.text.ParseException;
+import java.util.Date;
 
 import org.eclipse.smarthome.automation.Trigger;
 import org.eclipse.smarthome.automation.handler.BaseModuleHandler;
 import org.eclipse.smarthome.automation.handler.RuleEngineCallback;
 import org.eclipse.smarthome.automation.handler.TriggerHandler;
 import org.eclipse.smarthome.automation.module.timer.factory.TimerModuleHandlerFactory;
-import org.eclipse.smarthome.core.common.CronExpression;
+import org.eclipse.smarthome.core.common.RecurrenceExpression;
 import org.eclipse.smarthome.core.common.ThreadPoolManager;
 import org.eclipse.smarthome.core.common.ThreadPoolManager.ExpressionThreadPoolExecutor;
 import org.slf4j.Logger;
@@ -22,31 +23,33 @@ import org.slf4j.LoggerFactory;
 
 /**
  * This is an ModuleHandler implementation for Triggers which trigger the rule
- * based on a cron expression. The cron expression can be set with the
+ * based on a RFC5545 expression. The expression can be set with the
  * configuration.
  *
- * @author Christoph Knauf - Initial Contribution
- * @author Karel Goderis - Migration to ThreadPoolManager based scheduler
+ * @author Karel Goderis - Initial Contribution
  *
  */
-public class TimerTriggerHandler extends BaseModuleHandler<Trigger>implements TriggerHandler {
+public class RecurrenceTriggerHandler extends BaseModuleHandler<Trigger>implements TriggerHandler {
 
-    private final Logger logger = LoggerFactory.getLogger(TimerTriggerHandler.class);
+    private final Logger logger = LoggerFactory.getLogger(RecurrenceTriggerHandler.class);
 
     private RuleEngineCallback callback;
     private CallbackJob job;
-    private CronExpression cronExpression;
+    private RecurrenceExpression recurrenceExpression;
 
-    public static final String MODULE_TYPE_ID = "TimerTrigger";
-    private static final String CFG_CRON_EXPRESSION = "cronExpression";
+    public static final String MODULE_TYPE_ID = "RecurrenceTrigger";
+    private static final String CFG_RRULE_EXPRESSION = "RRuleExpression";
+    private static final String CFG_START_DATE = "StartDate";
 
-    public TimerTriggerHandler(Trigger module) {
+    public RecurrenceTriggerHandler(Trigger module) {
         super(module);
-        String cronExpression = (String) module.getConfiguration().get(CFG_CRON_EXPRESSION);
+        String recurrenceRuleExpression = (String) module.getConfiguration().get(CFG_RRULE_EXPRESSION);
+        Date date = (Date) module.getConfiguration().get(CFG_START_DATE);
+
         try {
-            this.cronExpression = new CronExpression(cronExpression);
+            this.recurrenceExpression = new RecurrenceExpression(recurrenceRuleExpression, date);
         } catch (ParseException e) {
-            logger.error("An exception occurred while parsing a cron expression: {}", e.getMessage());
+            logger.error("An exception occurred while parsing a recurrence expression: {}", e.getMessage());
         }
     }
 
@@ -58,7 +61,7 @@ public class TimerTriggerHandler extends BaseModuleHandler<Trigger>implements Tr
             ExpressionThreadPoolExecutor scheduler = ThreadPoolManager.getExpressionScheduledPool("automation");
             job.put(TimerModuleHandlerFactory.CALLBACK_CONTEXT_NAME, this.callback);
             job.put(TimerModuleHandlerFactory.MODULE_CONTEXT_NAME, this.module);
-            scheduler.schedule(job, cronExpression);
+            scheduler.schedule(job, recurrenceExpression);
         } catch (Exception e) {
             logger.error("Error while scheduling Job: {}", e.getMessage());
         }

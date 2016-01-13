@@ -11,6 +11,7 @@ import java.util.Map;
 
 import org.eclipse.smarthome.automation.Trigger;
 import org.eclipse.smarthome.automation.handler.RuleEngineCallback;
+import org.eclipse.smarthome.automation.module.timer.factory.TimerModuleHandlerFactory;
 import org.eclipse.smarthome.core.common.ContextRunnable;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -31,8 +32,8 @@ public class CallbackJob extends ContextRunnable {
 
     @Override
     public void run() {
-        RuleEngineCallback callback = (RuleEngineCallback) this.get(TimerTriggerHandler.CALLBACK_CONTEXT_NAME);
-        Trigger module = (Trigger) this.get(TimerTriggerHandler.MODULE_CONTEXT_NAME);
+        RuleEngineCallback callback = (RuleEngineCallback) this.get(TimerModuleHandlerFactory.CALLBACK_CONTEXT_NAME);
+        Trigger module = (Trigger) this.get(TimerModuleHandlerFactory.MODULE_CONTEXT_NAME);
         if (callback == null || module == null) {
             logger.error("Can't execute CallbackJob. Callback or module is null");
         } else {
