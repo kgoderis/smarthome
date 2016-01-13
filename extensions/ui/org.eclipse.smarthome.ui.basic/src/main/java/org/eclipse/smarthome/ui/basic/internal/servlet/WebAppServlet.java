@@ -79,7 +79,8 @@ public class WebAppServlet extends BaseServlet {
         config.applyConfig(configProps);
         try {
             Hashtable<String, String> props = new Hashtable<String, String>();
-            httpService.registerServlet(WEBAPP_ALIAS + "/" + SERVLET_NAME, this, props, createHttpContext());
+            httpService.registerServlet(WEBAPP_ALIAS + "/" + SERVLET_NAME, this, props,
+                    httpContextService.getDefaultContext());
             httpService.registerResources(WEBAPP_ALIAS, "web", null);
             logger.info("Started Basic UI at " + WEBAPP_ALIAS + "/" + SERVLET_NAME);
         } catch (NamespaceException e) {
@@ -121,8 +122,9 @@ public class WebAppServlet extends BaseServlet {
 
         for (SitemapProvider sitemapProvider : sitemapProviders) {
             sitemap = sitemapProvider.getSitemap(sitemapName);
-            if (sitemap != null)
+            if (sitemap != null) {
                 break;
+            }
         }
         try {
             if (sitemap == null) {
@@ -144,8 +146,9 @@ public class WebAppServlet extends BaseServlet {
                 Widget w = renderer.getItemUIRegistry().getWidget(sitemap, widgetId);
                 if (w != null) {
                     String label = renderer.getItemUIRegistry().getLabel(w);
-                    if (label == null)
+                    if (label == null) {
                         label = "undefined";
+                    }
                     if (!(w instanceof LinkableWidget)) {
                         throw new RenderException("Widget '" + w + "' can not have any content");
                     }

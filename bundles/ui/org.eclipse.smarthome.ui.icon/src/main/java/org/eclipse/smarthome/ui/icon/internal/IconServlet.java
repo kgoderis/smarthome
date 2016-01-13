@@ -23,9 +23,9 @@ import javax.servlet.http.HttpServletResponse;
 
 import org.apache.commons.io.IOUtils;
 import org.apache.commons.lang.StringUtils;
+import org.eclipse.smarthome.core.scheduler.httpcontext.HttpContextService;
 import org.eclipse.smarthome.ui.icon.IconProvider;
 import org.eclipse.smarthome.ui.icon.IconSet.Format;
-import org.osgi.service.http.HttpContext;
 import org.osgi.service.http.HttpService;
 import org.osgi.service.http.NamespaceException;
 import org.slf4j.Logger;
@@ -50,6 +50,7 @@ public class IconServlet extends HttpServlet {
     private long startupTime;
 
     protected HttpService httpService;
+    protected HttpContextService httpContextService;
 
     protected String defaultIconSetId = "classic";
 
@@ -61,6 +62,14 @@ public class IconServlet extends HttpServlet {
 
     public void unsetHttpService(HttpService httpService) {
         this.httpService = null;
+    }
+
+    public void setHttpContextService(HttpContextService httpContextService) {
+        this.httpContextService = httpContextService;
+    }
+
+    public void unsetHttpContextService(HttpContextService httpContextService) {
+        this.httpContextService = null;
     }
 
     public void addIconProvider(IconProvider iconProvider) {
@@ -76,7 +85,7 @@ public class IconServlet extends HttpServlet {
             logger.debug("Starting up icon servlet at " + SERVLET_NAME);
 
             Hashtable<String, String> props = new Hashtable<String, String>();
-            httpService.registerServlet(SERVLET_NAME, this, props, createHttpContext());
+            httpService.registerServlet(SERVLET_NAME, this, props, httpContextService.getDefaultContext());
         } catch (NamespaceException e) {
             logger.error("Error during servlet startup", e);
         } catch (ServletException e) {
@@ -92,16 +101,6 @@ public class IconServlet extends HttpServlet {
         if (iconSetId instanceof String) {
             defaultIconSetId = (String) iconSetId;
         }
-    }
-
-    /**
-     * Creates a {@link HttpContext}
-     *
-     * @return a {@link HttpContext}
-     */
-    protected HttpContext createHttpContext() {
-        HttpContext defaultHttpContext = httpService.createDefaultHttpContext();
-        return defaultHttpContext;
     }
 
     @Override

@@ -12,4 +12,5 @@
    <implementation class="org.eclipse.smarthome.ui.icon.internal.IconServlet"/>
    <reference bind="setHttpService" cardinality="1..1" interface="org.osgi.service.http.HttpService" name="HttpService" policy="static" unbind="unsetHttpService"/>
    <reference bind="addIconProvider" cardinality="1..n" interface="org.eclipse.smarthome.ui.icon.IconProvider" name="IconProvider" policy="dynamic" unbind="removeIconProvider"/>
+   <reference bind="setHttpContextService" cardinality="1..1" interface="org.eclipse.smarthome.core.scheduler.httpcontext.HttpContextService" name="HttpContextService" policy="dynamic" unbind="unsetHttpContextService"/>
 </scr:component>

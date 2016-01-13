@@ -12,6 +12,7 @@ import javax.servlet.ServletConfig;
 import javax.servlet.ServletException;
 
 import org.eclipse.smarthome.core.items.ItemRegistry;
+import org.eclipse.smarthome.core.scheduler.httpcontext.HttpContextService;
 import org.osgi.service.http.HttpContext;
 import org.osgi.service.http.HttpService;
 
@@ -26,6 +27,7 @@ public abstract class BaseServlet implements Servlet {
     public static final String WEBAPP_ALIAS = "/basicui";
 
     protected HttpService httpService;
+    protected HttpContextService httpContextService;
     protected ItemRegistry itemRegistry;
 
     public void setItemRegistry(ItemRegistry itemRegistry) {
@@ -42,6 +44,14 @@ public abstract class BaseServlet implements Servlet {
 
     public void unsetHttpService(HttpService httpService) {
         this.httpService = null;
+    }
+
+    public void setHttpContextService(HttpContextService httpContextService) {
+        this.httpContextService = httpContextService;
+    }
+
+    public void unsetHttpContextService(HttpContextService httpContextService) {
+        this.httpContextService = null;
     }
 
     /**
