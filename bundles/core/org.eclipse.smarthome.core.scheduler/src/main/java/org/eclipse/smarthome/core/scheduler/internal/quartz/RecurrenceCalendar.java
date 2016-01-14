@@ -31,6 +31,10 @@ public class RecurrenceCalendar implements Calendar {
         return baseCalendar;
     }
 
+    public VEvent getEvent() {
+        return this.event;
+    }
+
     @Override
     public boolean isTimeIncluded(long timeStamp) {
         final DateTime dateTime = new DateTime(timeStamp);

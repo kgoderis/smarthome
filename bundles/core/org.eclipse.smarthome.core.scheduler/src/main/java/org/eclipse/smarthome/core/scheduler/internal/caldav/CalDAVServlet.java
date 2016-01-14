@@ -2135,12 +2135,13 @@ public class CalDAVServlet extends HttpServlet implements PersistenceService, Ev
             if (event instanceof RuleAddedEvent) {
                 org.eclipse.smarthome.automation.Rule rule = ((RuleAddedEvent) event).getRule();
                 List<Trigger> triggers = rule.getTriggers();
-                for (Trigger aTrigger : triggers) {
-                    if (aTrigger.getTypeUID().equals("TimerTrigger")) {
-                        logger.debug("The Rule with id '{}' contains a TimerTrigger with id '{}'", rule.getUID(),
-                                aTrigger.getId());
-                        if (!rule.getUID().contains("_Rule_Start") && !rule.getUID().contains("_Rule_End")) {
-                            // it is not one of our own rules
+                if (!rule.getUID().contains("_Rule_Start") && !rule.getUID().contains("_Rule_End")) {
+                    // it is not one of our own rules
+                    for (Trigger aTrigger : triggers) {
+                        if (aTrigger.getTypeUID().equals("TimerTrigger")) {
+                            logger.debug("The Rule with id '{}' contains a TimerTrigger with id '{}'", rule.getUID(),
+                                    aTrigger.getId());
+
                             // TODO: convert cron expression into something that is RRule like for insertion into the
                             // calendar. We could for example take the next xyz times the trigger would fire as separate
                             // events and insert those into calendar
@@ -2157,6 +2158,48 @@ public class CalDAVServlet extends HttpServlet implements PersistenceService, Ev
                                 logger.debug("{} The Trigger will fire on '{}'", i, nextDate);
                                 date = nextDate;
                             }
+                        }
+                        if (aTrigger.getTypeUID().equals("RecurrenceTrigger")) {
+                            String uid = UUID.randomUUID().toString();
+                            String url = "/openhab/" + uid + ".ics";
+
+                            // DateTime start = new DateTime((Date) aTrigger.getConfiguration().get("StartDate"));
+                            //
+                            // VEvent persistedEvent = new VEvent(start, aTrigger.getDescription());
+                            // persistedEvent.getProperties().add(new Uid(uid));
+                            // persistedEvent.getProperties().add(new RRule((String)
+                            // aTrigger.getConfiguration().get("RRuleExpression")));
+
+                            String calendarName = (String) aTrigger.getConfiguration().get("RRuleCalendar");
+                            Scheduler scheduler = new StdSchedulerFactory().getScheduler();
+                            RecurrenceCalendar modifiedBy = (RecurrenceCalendar) scheduler.getCalendar(calendarName);
+                            VEvent persistedEvent = modifiedBy.getEvent();
+                            persistedEvent.getProperties().add(new Description(aTrigger.getDescription()));
+
+                            Calendar calendar = new Calendar();
+                            calendar.getProperties().add(new ProdId("-//Eclipse Smarthome//CalDav Servlet//EN"));
+                            calendar.getProperties().add(Version.VERSION_2_0);
+                            calendar.getProperties().add(CalScale.GREGORIAN);
+
+                            calendar.getComponents().add(persistedEvent);
+                            ByteArrayOutputStream bo = new ByteArrayOutputStream();
+                            CalendarOutputter outputter = new CalendarOutputter();
+                            outputter.output(calendar, bo);
+                            logger.debug("Adding persisted data to the calendar : '{}'", bo.toString("UTF-8"));
+
+                            // create resource with unique ID
+                            Resource r = new Resource(rf, url);
+                            r.withMethods(Arrays.asList(METHOD_PROPFIND, METHOD_GET, METHOD_DELETE, METHOD_MOVE,
+                                    METHOD_PUT, METHOD_REPORT));
+                            r.withLevel("1");
+                            r.withPrivilege(Privilege.ALL);
+                            r.setUniqueId(uid);
+                            r.withProperty(rf.getProperty("getcontenttype"), "text/calendar");
+                            r.withProperty(rf.getProperty("calendar-data"), bo.toString("UTF-8"));
+                            r.setModifiedDate(new Date());
+
+                            logger.debug("Storing a resource with persisted date and with URL '{}'", r.getURL());
+                            rf.addResource(r, false);
                         }
                     }
                 }
