@@ -11,11 +11,7 @@ import java.util.Map;
 
 import org.eclipse.smarthome.automation.Trigger;
 import org.eclipse.smarthome.automation.handler.RuleEngineCallback;
-import org.quartz.Job;
-import org.quartz.JobExecutionContext;
-import org.quartz.JobExecutionException;
-import org.quartz.SchedulerContext;
-import org.quartz.SchedulerException;
+import org.eclipse.smarthome.core.common.ContextRunnable;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -26,32 +22,22 @@ import com.google.common.collect.Maps;
  * {@see TimerTriggerHandler}
  *
  * @author Christoph Knauf - Initial Contribution
+ * @author Karel Goderis - Migration to ThreadPoolManager based scheduler
  *
  */
-public class CallbackJob implements Job {
+public class CallbackJob extends ContextRunnable {
 
     private final Logger logger = LoggerFactory.getLogger(TimerTriggerHandler.class);
 
     @Override
-    public void execute(JobExecutionContext context) throws JobExecutionException {
-        SchedulerContext schedulerContext = null;
-        try {
-            schedulerContext = context.getScheduler().getContext();
-        } catch (SchedulerException e1) {
-            logger.error("Error while resolving scheduler context");
-        }
-        if (schedulerContext == null) {
-            logger.error("Can't execute CallbackJob. SchedulerContext is null");
+    public void run() {
+        RuleEngineCallback callback = (RuleEngineCallback) this.get(TimerTriggerHandler.CALLBACK_CONTEXT_NAME);
+        Trigger module = (Trigger) this.get(TimerTriggerHandler.MODULE_CONTEXT_NAME);
+        if (callback == null || module == null) {
+            logger.error("Can't execute CallbackJob. Callback or module is null");
         } else {
-            RuleEngineCallback callback = (RuleEngineCallback) schedulerContext
-                    .get(TimerTriggerHandler.CALLBACK_CONTEXT_NAME);
-            Trigger module = (Trigger) schedulerContext.get(TimerTriggerHandler.MODULE_CONTEXT_NAME);
-            if (callback == null || module == null) {
-                logger.error("Can't execute CallbackJob. Callback or module is null");
-            } else {
-                Map<String, Object> values = Maps.newHashMap();
-                callback.triggered(module, values);
-            }
+            Map<String, Object> values = Maps.newHashMap();
+            callback.triggered(module, values);
         }
     }
 

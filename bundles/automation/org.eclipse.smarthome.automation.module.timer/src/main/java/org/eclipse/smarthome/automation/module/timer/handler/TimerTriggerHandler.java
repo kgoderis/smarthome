@@ -7,20 +7,15 @@
  */
 package org.eclipse.smarthome.automation.module.timer.handler;
 
-import java.util.UUID;
+import java.text.ParseException;
 
 import org.eclipse.smarthome.automation.Trigger;
 import org.eclipse.smarthome.automation.handler.BaseModuleHandler;
 import org.eclipse.smarthome.automation.handler.RuleEngineCallback;
 import org.eclipse.smarthome.automation.handler.TriggerHandler;
-import org.quartz.CronScheduleBuilder;
-import org.quartz.CronTrigger;
-import org.quartz.JobBuilder;
-import org.quartz.JobDetail;
-import org.quartz.Scheduler;
-import org.quartz.SchedulerException;
-import org.quartz.TriggerBuilder;
-import org.quartz.impl.StdSchedulerFactory;
+import org.eclipse.smarthome.core.common.CronExpression;
+import org.eclipse.smarthome.core.common.ThreadPoolManager;
+import org.eclipse.smarthome.core.common.ThreadPoolManager.ExpressionThreadPoolExecutor;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -30,6 +25,7 @@ import org.slf4j.LoggerFactory;
  * configuration.
  *
  * @author Christoph Knauf - Initial Contribution
+ * @author Karel Goderis - Migration to ThreadPoolManager based scheduler
  *
  */
 public class TimerTriggerHandler extends BaseModuleHandler<Trigger>implements TriggerHandler {
@@ -37,9 +33,8 @@ public class TimerTriggerHandler extends BaseModuleHandler<Trigger>implements Tr
     private final Logger logger = LoggerFactory.getLogger(TimerTriggerHandler.class);
 
     private RuleEngineCallback callback;
-    private JobDetail job;
-    private CronTrigger trigger;
-    private Scheduler scheduler;
+    private CallbackJob job;
+    private CronExpression cronExpression;
 
     public static final String MODULE_TYPE_ID = "TimerTrigger";
     public static final String CALLBACK_CONTEXT_NAME = "CALLBACK";
@@ -50,22 +45,23 @@ public class TimerTriggerHandler extends BaseModuleHandler<Trigger>implements Tr
     public TimerTriggerHandler(Trigger module) {
         super(module);
         String cronExpression = (String) module.getConfiguration().get(CFG_CRON_EXPRESSION);
-        this.trigger = TriggerBuilder.newTrigger().withIdentity(MODULE_TYPE_ID + UUID.randomUUID().toString())
-                .withSchedule(CronScheduleBuilder.cronSchedule(cronExpression)).build();
+        try {
+            this.cronExpression = new CronExpression(cronExpression);
+        } catch (ParseException e) {
+            logger.error("An exception occurred while parsing a cron expression: {}", e.getMessage());
+        }
     }
 
     @Override
     public void setRuleEngineCallback(RuleEngineCallback ruleCallback) {
         this.callback = ruleCallback;
-        this.job = JobBuilder.newJob(CallbackJob.class).withIdentity(MODULE_TYPE_ID + UUID.randomUUID().toString())
-                .build();
+        this.job = new CallbackJob();
         try {
-            this.scheduler = new StdSchedulerFactory().getScheduler();
-            scheduler.start();
-            scheduler.getContext().put(CALLBACK_CONTEXT_NAME, this.callback);
-            scheduler.getContext().put(MODULE_CONTEXT_NAME, this.module);
-            scheduler.scheduleJob(job, trigger);
-        } catch (SchedulerException e) {
+            ExpressionThreadPoolExecutor scheduler = ThreadPoolManager.getExpressionScheduledPool("automation");
+            job.put(CALLBACK_CONTEXT_NAME, this.callback);
+            job.put(MODULE_CONTEXT_NAME, this.module);
+            scheduler.schedule(job, cronExpression);
+        } catch (Exception e) {
             logger.error("Error while scheduling Job: {}", e.getMessage());
         }
     }
@@ -73,13 +69,12 @@ public class TimerTriggerHandler extends BaseModuleHandler<Trigger>implements Tr
     @Override
     public void dispose() {
         try {
+            ExpressionThreadPoolExecutor scheduler = ThreadPoolManager.getExpressionScheduledPool("automation");
             if (scheduler != null && job != null) {
-                scheduler.deleteJob(job.getKey());
+                scheduler.remove(job);
             }
-            scheduler = null;
-            trigger = null;
             job = null;
-        } catch (SchedulerException e) {
+        } catch (Exception e) {
             logger.error("Error while disposing Job: {}", e.getMessage());
         }
 
