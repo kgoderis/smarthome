@@ -8,25 +8,24 @@
 package org.eclipse.smarthome.model.persistence.internal;
 
 import org.eclipse.emf.ecore.EObject;
+import org.eclipse.smarthome.core.common.ContextRunnable;
 import org.eclipse.smarthome.core.items.Item;
 import org.eclipse.smarthome.core.persistence.PersistenceService;
 import org.eclipse.smarthome.model.core.ModelRepository;
 import org.eclipse.smarthome.model.persistence.persistence.PersistenceConfiguration;
 import org.eclipse.smarthome.model.persistence.persistence.PersistenceModel;
 import org.eclipse.smarthome.model.persistence.persistence.Strategy;
-import org.quartz.Job;
-import org.quartz.JobExecutionContext;
-import org.quartz.JobExecutionException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 /**
- * Implementation of Quartz {@link Job}-Interface. It takes a PersistenceModel and a CronStrategy,
+ * Implementation of a ContextRunnable that takes a PersistenceModel and a CronStrategy,
  * scans through the relevant configurations and persists the concerned items.
  *
  * @author Kai Kreuzer - Initial contribution and API
+ * @author Karel Goderis - Migration to the internal scheduler infrastructure
  */
-public class PersistItemsJob implements Job {
+public class PersistItemsJob extends ContextRunnable {
 
     private final Logger logger = LoggerFactory.getLogger(PersistItemsJob.class);
 
@@ -34,9 +33,9 @@ public class PersistItemsJob implements Job {
     public static final String JOB_DATA_STRATEGYNAME = "strategy";
 
     @Override
-    public void execute(JobExecutionContext context) throws JobExecutionException {
-        String modelName = (String) context.getJobDetail().getJobDataMap().get(JOB_DATA_PERSISTMODEL);
-        String strategyName = (String) context.getJobDetail().getJobDataMap().get(JOB_DATA_STRATEGYNAME);
+    public void run() {
+        String modelName = (String) this.get(JOB_DATA_PERSISTMODEL);
+        String strategyName = (String) this.get(JOB_DATA_STRATEGYNAME);
 
         PersistenceManager persistenceManager = PersistenceManager.getInstance();
         if (persistenceManager != null) {

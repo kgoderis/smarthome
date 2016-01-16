@@ -7,10 +7,8 @@
  */
 package org.eclipse.smarthome.model.persistence.internal;
 
-import static org.quartz.JobBuilder.newJob;
-import static org.quartz.TriggerBuilder.newTrigger;
-
 import java.text.DateFormat;
+import java.text.ParseException;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.HashMap;
@@ -23,6 +21,9 @@ import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 
 import org.eclipse.emf.ecore.EObject;
+import org.eclipse.smarthome.core.common.CronExpression;
+import org.eclipse.smarthome.core.common.ThreadPoolManager;
+import org.eclipse.smarthome.core.common.ThreadPoolManager.ExpressionThreadPoolExecutor;
 import org.eclipse.smarthome.core.items.GenericItem;
 import org.eclipse.smarthome.core.items.GroupItem;
 import org.eclipse.smarthome.core.items.Item;
@@ -47,15 +48,6 @@ import org.eclipse.smarthome.model.persistence.persistence.PersistenceConfigurat
 import org.eclipse.smarthome.model.persistence.persistence.PersistenceModel;
 import org.eclipse.smarthome.model.persistence.persistence.Strategy;
 import org.eclipse.smarthome.model.persistence.scoping.GlobalStrategies;
-import org.quartz.CronScheduleBuilder;
-import org.quartz.Job;
-import org.quartz.JobDetail;
-import org.quartz.JobKey;
-import org.quartz.Scheduler;
-import org.quartz.SchedulerException;
-import org.quartz.Trigger;
-import org.quartz.impl.StdSchedulerFactory;
-import org.quartz.impl.matchers.GroupMatcher;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -64,17 +56,18 @@ import org.slf4j.LoggerFactory;
  * models, schedules timers and manages the invocation of {@link PersistenceService}s upon events.
  *
  * @author Kai Kreuzer - Initial contribution and API
+ * @author Karel Goderis - Migration to the internal scheduler infrastructure
  *
  */
-public class PersistenceManager implements ModelRepositoryChangeListener,
-        ItemRegistryChangeListener, StateChangeListener {
+public class PersistenceManager
+        implements ModelRepositoryChangeListener, ItemRegistryChangeListener, StateChangeListener {
 
     private final Logger logger = LoggerFactory.getLogger(PersistenceManager.class);
 
     private static PersistenceManager instance;
 
     // the scheduler used for timer events
-    private Scheduler scheduler;
+    private ExpressionThreadPoolExecutor scheduler;
 
     /* default */ModelRepository modelRepository;
 
@@ -89,11 +82,13 @@ public class PersistenceManager implements ModelRepositoryChangeListener,
     protected Map<String, List<Strategy>> defaultStrategies = Collections
             .synchronizedMap(new HashMap<String, List<Strategy>>());
 
+    protected Map<String, PersistItemsJob> persistenceJobs = new ConcurrentHashMap<String, PersistItemsJob>();
+
     public PersistenceManager() {
         PersistenceManager.instance = this;
         try {
-            scheduler = StdSchedulerFactory.getDefaultScheduler();
-        } catch (SchedulerException e) {
+            scheduler = ThreadPoolManager.getExpressionScheduledPool("automation");
+        } catch (Exception e) {
             logger.error("initializing scheduler throws exception", e);
         }
     }
@@ -167,7 +162,7 @@ public class PersistenceManager implements ModelRepositoryChangeListener,
 
     /**
      * Registers a persistence model file with the persistence manager, so that it becomes active.
-     * 
+     *
      * @param modelName the name of the persistence model without file extension
      */
     private void startEventHandling(String modelName) {
@@ -190,7 +185,7 @@ public class PersistenceManager implements ModelRepositoryChangeListener,
 
     /**
      * Unregisters a persistence model file from the persistence manager, so that it is not further regarded.
-     * 
+     *
      * @param modelName the name of the persistence model without file extension
      */
     private void stopEventHandling(String modelName) {
@@ -211,7 +206,7 @@ public class PersistenceManager implements ModelRepositoryChangeListener,
 
     /**
      * Calls all persistence services which use change or update policy for the given item
-     * 
+     *
      * @param item the item to persist
      * @param onlyChanges true, if it has the change strategy, false otherwise
      */
@@ -221,8 +216,8 @@ public class PersistenceManager implements ModelRepositoryChangeListener,
                 String serviceName = entry.getKey();
                 if (persistenceServices.containsKey(serviceName)) {
                     for (PersistenceConfiguration config : entry.getValue()) {
-                        if (hasStrategy(serviceName, config, onlyChanges ? GlobalStrategies.CHANGE
-                                : GlobalStrategies.UPDATE)) {
+                        if (hasStrategy(serviceName, config,
+                                onlyChanges ? GlobalStrategies.CHANGE : GlobalStrategies.UPDATE)) {
                             if (appliesToItem(config, item)) {
                                 persistenceServices.get(serviceName).store(item, config.getAlias());
                             }
@@ -235,7 +230,7 @@ public class PersistenceManager implements ModelRepositoryChangeListener,
 
     /**
      * Checks if a given persistence configuration entry has a certain strategy for the given service
-     * 
+     *
      * @param serviceName the service to check the configuration for
      * @param config the persistence configuration entry
      * @param strategy the strategy to check for
@@ -256,7 +251,7 @@ public class PersistenceManager implements ModelRepositoryChangeListener,
 
     /**
      * Checks if a given persistence configuration entry is relevant for an item
-     * 
+     *
      * @param config the persistence configuration entry
      * @param item to check if the configuration applies to
      * @return true, if the configuration applies to the item
@@ -292,7 +287,7 @@ public class PersistenceManager implements ModelRepositoryChangeListener,
 
     /**
      * Retrieves all items for which the persistence configuration applies to.
-     * 
+     *
      * @param config the persistence configuration entry
      * @return all items that this configuration applies to
      */
@@ -354,7 +349,7 @@ public class PersistenceManager implements ModelRepositoryChangeListener,
      * If the item state is still undefined when entering this method, all persistence configurations are checked,
      * if they have the "restoreOnStartup" strategy configured for the item. If so, the item state will be set
      * to its last persisted value.
-     * 
+     *
      * @param item the item to restore the state for
      */
     protected void initialize(Item item) {
@@ -377,12 +372,11 @@ public class PersistenceManager implements ModelRepositoryChangeListener,
                                     genericItem.removeStateChangeListener(this);
                                     genericItem.setState(historicItem.getState());
                                     genericItem.addStateChangeListener(this);
-                                    logger.debug(
-                                            "Restored item state from '{}' for item '{}' -> '{}'",
+                                    logger.debug("Restored item state from '{}' for item '{}' -> '{}'",
                                             new Object[] {
                                                     DateFormat.getDateTimeInstance()
-                                                            .format(historicItem.getTimestamp()), item.getName(),
-                                                    historicItem.getState().toString() });
+                                                            .format(historicItem.getTimestamp()),
+                                                    item.getName(), historicItem.getState().toString() });
                                     return;
                                 }
                             } else if (service != null) {
@@ -406,12 +400,12 @@ public class PersistenceManager implements ModelRepositoryChangeListener,
     }
 
     /**
-     * Creates and schedules a new quartz-job and trigger with model and rule name as jobData.
-     * 
+     * Creates and schedules a new job and trigger with model and rule name as context data.
+     *
      * @param rule the rule to schedule
      * @param trigger the defined trigger
-     * 
-     * @throws SchedulerException if there is an internal Scheduler error.
+     *
+     * @throws Exception if there is an internal Scheduler error.
      */
     private void createTimers(String modelName) {
         PersistenceModel persistModel = (PersistenceModel) modelRepository.getModel(modelName + ".persist");
@@ -420,24 +414,23 @@ public class PersistenceManager implements ModelRepositoryChangeListener,
                 if (strategy instanceof CronStrategy) {
                     CronStrategy cronStrategy = (CronStrategy) strategy;
                     String cronExpression = cronStrategy.getCronExpression();
-                    JobKey jobKey = new JobKey(strategy.getName(), modelName);
+                    String jobKey = strategy.getName() + "#" + modelName;
                     try {
-                        JobDetail job = newJob(PersistItemsJob.class)
-                                .usingJobData(PersistItemsJob.JOB_DATA_PERSISTMODEL,
-                                        cronStrategy.eResource().getURI().trimFileExtension().path())
-                                .usingJobData(PersistItemsJob.JOB_DATA_STRATEGYNAME, cronStrategy.getName())
-                                .withIdentity(jobKey).build();
+                        PersistItemsJob job = new PersistItemsJob();
+                        job.put(PersistItemsJob.JOB_DATA_PERSISTMODEL,
+                                cronStrategy.eResource().getURI().trimFileExtension().path());
+                        job.put(PersistItemsJob.JOB_DATA_STRATEGYNAME, cronStrategy.getName());
 
-                        Trigger quartzTrigger = newTrigger().withSchedule(
-                                CronScheduleBuilder.cronSchedule(cronExpression)).build();
+                        CronExpression cronExpr = new CronExpression(cronExpression);
 
-                        scheduler.scheduleJob(job, quartzTrigger);
+                        persistenceJobs.put(jobKey, job);
+                        scheduler.schedule(job, cronExpr);
 
-                        logger.debug("Scheduled strategy {} with cron expression {}", new Object[] { jobKey.toString(),
-                                cronExpression });
-                    } catch (SchedulerException e) {
-                        logger.error("Failed to schedule job for strategy {} with cron expression {}", new String[] {
-                                jobKey.toString(), cronExpression }, e);
+                        logger.debug("Scheduled strategy {} with cron expression {}",
+                                new Object[] { jobKey.toString(), cronExpression });
+                    } catch (ParseException e) {
+                        logger.error("Failed to schedule job for strategy {} with cron expression {}",
+                                new String[] { jobKey.toString(), cronExpression }, e);
                     }
                 }
             }
@@ -445,26 +438,26 @@ public class PersistenceManager implements ModelRepositoryChangeListener,
     }
 
     /**
-     * Delete all {@link Job}s of the group <code>persistModelName</code>
-     * 
-     * @throws SchedulerException if there is an internal Scheduler error.
+     * Delete all Jobs of the group <code>persistModelName</code>
+     *
+     * @throws Exception if there is an internal Scheduler error.
      */
     private void removeTimers(String persistModelName) {
         try {
-            Set<JobKey> jobKeys = scheduler.getJobKeys(GroupMatcher.jobGroupEquals(persistModelName));
-            for (JobKey jobKey : jobKeys) {
+            for (String jobKey : persistenceJobs.keySet()) {
                 try {
-                    boolean success = scheduler.deleteJob(jobKey);
+                    boolean success = scheduler.remove(persistenceJobs.get(jobKey));
                     if (success) {
                         logger.debug("Removed scheduled cron job for strategy '{}'", jobKey.toString());
+                        persistenceJobs.remove(jobKey);
                     } else {
-                        logger.warn("Failed to delete cron jobs '{}'", jobKey.getName());
+                        logger.warn("Failed to delete cron jobs '{}'", jobKey);
                     }
-                } catch (SchedulerException e) {
-                    logger.warn("Failed to delete cron jobs '{}'", jobKey.getName());
+                } catch (Exception e) {
+                    logger.warn("Failed to delete cron jobs '{}'", jobKey);
                 }
             }
-        } catch (SchedulerException e) {
+        } catch (Exception e) {
             logger.warn("Failed to delete cron jobs of group '{}'", persistModelName);
         }
     }
