@@ -32,26 +32,22 @@ import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.TimeUnit;
+import java.util.logging.Logger;
 
-import org.apache.commons.lang.StringUtils;
 import org.eclipse.smarthome.binding.lifx.LifxBindingConstants;
-import org.eclipse.smarthome.binding.lifx.fields.MACAddress;
-import org.eclipse.smarthome.binding.lifx.protocol.GetServiceRequest;
-import org.eclipse.smarthome.binding.lifx.protocol.GetVersionRequest;
-import org.eclipse.smarthome.binding.lifx.protocol.Packet;
-import org.eclipse.smarthome.binding.lifx.protocol.PacketFactory;
-import org.eclipse.smarthome.binding.lifx.protocol.PacketHandler;
-import org.eclipse.smarthome.binding.lifx.protocol.Products;
-import org.eclipse.smarthome.binding.lifx.protocol.StateServiceResponse;
-import org.eclipse.smarthome.binding.lifx.protocol.StateVersionResponse;
+import org.eclipse.smarthome.binding.lifx.internal.fields.MACAddress;
+import org.eclipse.smarthome.binding.lifx.internal.protocol.GetServiceRequest;
+import org.eclipse.smarthome.binding.lifx.internal.protocol.GetVersionRequest;
+import org.eclipse.smarthome.binding.lifx.internal.protocol.Packet;
+import org.eclipse.smarthome.binding.lifx.internal.protocol.PacketFactory;
+import org.eclipse.smarthome.binding.lifx.internal.protocol.PacketHandler;
+import org.eclipse.smarthome.binding.lifx.internal.protocol.Products;
+import org.eclipse.smarthome.binding.lifx.internal.protocol.StateServiceResponse;
+import org.eclipse.smarthome.binding.lifx.internal.protocol.StateVersionResponse;
 import org.eclipse.smarthome.config.discovery.AbstractDiscoveryService;
 import org.eclipse.smarthome.config.discovery.DiscoveryResult;
 import org.eclipse.smarthome.config.discovery.DiscoveryResultBuilder;
 import org.eclipse.smarthome.core.thing.ThingUID;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-
-import com.google.common.collect.Sets;
 
 /**
  * The {@link LifxLightDiscovery} provides support for auto-discovery of LIFX
@@ -442,14 +438,15 @@ public class LifxLightDiscovery extends AbstractDiscoveryService {
 
         String label = "";
 
-        if (StringUtils.isBlank(label))
-            label = product.getName() + " v." + returnedPacket.getVersion() + " [" + discoveredAddress.getAsLabel()
-                    + "]";
+        if (StringUtils.isBlank(label)) {
+            label = product.getName();
+        }
 
         logger.debug("Discovered a LIFX light : {}", label);
 
         return DiscoveryResultBuilder.create(thingUID).withLabel(label)
-                .withProperty(LifxBindingConstants.CONFIG_PROPERTY_DEVICE_ID, discoveredAddress.getAsLabel()).build();
+                .withProperty(LifxBindingConstants.CONFIG_PROPERTY_DEVICE_ID, discoveredAddress.getAsLabel())
+                .withRepresentationProperty(discoveredAddress.getAsLabel()).build();
     }
 
     private ThingUID getUID(String hex) {

@@ -33,25 +33,26 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.locks.ReentrantLock;
+import java.util.logging.Logger;
 
 import org.eclipse.smarthome.binding.lifx.LifxBindingConstants;
-import org.eclipse.smarthome.binding.lifx.fields.MACAddress;
 import org.eclipse.smarthome.binding.lifx.internal.LifxNetworkThrottler;
-import org.eclipse.smarthome.binding.lifx.protocol.EchoRequestResponse;
-import org.eclipse.smarthome.binding.lifx.protocol.GetEchoRequest;
-import org.eclipse.smarthome.binding.lifx.protocol.GetLightPowerRequest;
-import org.eclipse.smarthome.binding.lifx.protocol.GetRequest;
-import org.eclipse.smarthome.binding.lifx.protocol.GetServiceRequest;
-import org.eclipse.smarthome.binding.lifx.protocol.Packet;
-import org.eclipse.smarthome.binding.lifx.protocol.PacketFactory;
-import org.eclipse.smarthome.binding.lifx.protocol.PacketHandler;
-import org.eclipse.smarthome.binding.lifx.protocol.PowerState;
-import org.eclipse.smarthome.binding.lifx.protocol.SetColorRequest;
-import org.eclipse.smarthome.binding.lifx.protocol.SetLightPowerRequest;
-import org.eclipse.smarthome.binding.lifx.protocol.StateLabelResponse;
-import org.eclipse.smarthome.binding.lifx.protocol.StatePowerResponse;
-import org.eclipse.smarthome.binding.lifx.protocol.StateResponse;
-import org.eclipse.smarthome.binding.lifx.protocol.StateServiceResponse;
+import org.eclipse.smarthome.binding.lifx.internal.fields.MACAddress;
+import org.eclipse.smarthome.binding.lifx.internal.protocol.EchoRequestResponse;
+import org.eclipse.smarthome.binding.lifx.internal.protocol.GetEchoRequest;
+import org.eclipse.smarthome.binding.lifx.internal.protocol.GetLightPowerRequest;
+import org.eclipse.smarthome.binding.lifx.internal.protocol.GetRequest;
+import org.eclipse.smarthome.binding.lifx.internal.protocol.GetServiceRequest;
+import org.eclipse.smarthome.binding.lifx.internal.protocol.Packet;
+import org.eclipse.smarthome.binding.lifx.internal.protocol.PacketFactory;
+import org.eclipse.smarthome.binding.lifx.internal.protocol.PacketHandler;
+import org.eclipse.smarthome.binding.lifx.internal.protocol.PowerState;
+import org.eclipse.smarthome.binding.lifx.internal.protocol.SetColorRequest;
+import org.eclipse.smarthome.binding.lifx.internal.protocol.SetLightPowerRequest;
+import org.eclipse.smarthome.binding.lifx.internal.protocol.StateLabelResponse;
+import org.eclipse.smarthome.binding.lifx.internal.protocol.StatePowerResponse;
+import org.eclipse.smarthome.binding.lifx.internal.protocol.StateResponse;
+import org.eclipse.smarthome.binding.lifx.internal.protocol.StateServiceResponse;
 import org.eclipse.smarthome.core.library.types.DecimalType;
 import org.eclipse.smarthome.core.library.types.HSBType;
 import org.eclipse.smarthome.core.library.types.IncreaseDecreaseType;
@@ -63,8 +64,6 @@ import org.eclipse.smarthome.core.thing.ThingStatus;
 import org.eclipse.smarthome.core.thing.ThingStatusDetail;
 import org.eclipse.smarthome.core.thing.binding.BaseThingHandler;
 import org.eclipse.smarthome.core.types.Command;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 
 /**
  * The {@link LifxLightHandler} is responsible for handling commands, which are
@@ -238,6 +237,8 @@ public class LifxLightHandler extends BaseThingHandler {
                 case CHANNEL_TEMPERATURE:
                     if (command instanceof DecimalType) {
                         handleTemperatureCommand((DecimalType) command);
+                    } else if (command instanceof IncreaseDecreaseType) {
+                        handleIncreaseDecreaseTemperatureCommand((IncreaseDecreaseType) command);
                     }
                     break;
                 default:
@@ -322,6 +323,29 @@ public class LifxLightHandler extends BaseThingHandler {
 
             PercentType newBrightness = new PercentType(Math.round(brightness * 100));
             handlePercentCommand(newBrightness);
+        }
+    }
+
+    private void handleIncreaseDecreaseTemperatureCommand(IncreaseDecreaseType increaseDecreaseType) {
+        if (currentTempState != null) {
+            float temperature = currentTempState.floatValue() / 100;
+
+            if (increaseDecreaseType == IncreaseDecreaseType.INCREASE) {
+                temperature = (float) (temperature + INCREASE_DECREASE_STEP);
+                if (temperature > 1) {
+                    temperature = 1;
+                }
+
+            }
+            if (increaseDecreaseType == IncreaseDecreaseType.DECREASE) {
+                temperature = (float) (temperature - INCREASE_DECREASE_STEP);
+                if (temperature < 0) {
+                    temperature = 0;
+                }
+            }
+
+            DecimalType newTemperature = new DecimalType(Math.round(temperature * 100));
+            handleTemperatureCommand(newTemperature);
         }
     }
 
@@ -414,7 +438,6 @@ public class LifxLightHandler extends BaseThingHandler {
                 }
             } catch (Exception e) {
                 logger.error("An exception orccurred while communicating with the bulb : '{}'", e.getMessage());
-                e.printStackTrace();
             } finally {
                 lock.unlock();
             }
@@ -465,7 +488,7 @@ public class LifxLightHandler extends BaseThingHandler {
                     GetRequest colorPacket = new GetRequest();
                     sendPacket(colorPacket);
                 } else {
-                    logger.trace("{} : The bulb is not online, there is not point polling it", macAddress.getHex());
+                    logger.trace("{} : The bulb is not online, there is no point polling it", macAddress.getHex());
                     lastStatePollingTimestamp = System.currentTimeMillis();
                 }
             }
