@@ -48,6 +48,18 @@ public class DateExpression extends AbstractExpression {
         this(date, Calendar.getInstance().getTime(), TimeZone.getDefault());
     }
 
+    public DateExpression(final Date date) throws ParseException {
+        if (date == null) {
+            throw new IllegalArgumentException("date cannot be null");
+        }
+        Calendar c = Calendar.getInstance();
+        c.setTime(date);
+        String expression = javax.xml.bind.DatatypeConverter.printDateTime(c);
+
+        buildExpression(expression);
+        setTimeZone(TimeZone.getDefault());
+    }
+
     private DateExpression(final String dateExpression, final Date startTime, final TimeZone zone)
             throws ParseException {
         if (dateExpression == null) {
