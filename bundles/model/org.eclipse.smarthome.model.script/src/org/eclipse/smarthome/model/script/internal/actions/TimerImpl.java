@@ -7,18 +7,13 @@
  */
 package org.eclipse.smarthome.model.script.internal.actions;
 
-import static org.quartz.TriggerBuilder.newTrigger;
-
+import org.eclipse.smarthome.core.common.ThreadPoolManager;
+import org.eclipse.smarthome.core.common.ThreadPoolManager.ExpressionThreadPoolExecutor;
+import org.eclipse.smarthome.model.script.actions.ScriptExecution;
 import org.eclipse.smarthome.model.script.actions.Timer;
+import org.eclipse.xtext.xbase.lib.Procedures.Procedure0;
 import org.joda.time.DateTime;
 import org.joda.time.base.AbstractInstant;
-import org.quartz.JobExecutionContext;
-import org.quartz.JobKey;
-import org.quartz.Scheduler;
-import org.quartz.SchedulerException;
-import org.quartz.Trigger;
-import org.quartz.TriggerKey;
-import org.quartz.impl.StdSchedulerFactory;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -34,39 +29,37 @@ public class TimerImpl implements Timer {
     private final Logger logger = LoggerFactory.getLogger(TimerImpl.class);
 
     // the scheduler used for timer events
-    public static Scheduler scheduler;
+    public static ExpressionThreadPoolExecutor scheduler;
 
     static {
-        try {
-            scheduler = StdSchedulerFactory.getDefaultScheduler();
-        } catch (SchedulerException e) {
-            LoggerFactory.getLogger(TimerImpl.class).error("initializing scheduler throws exception", e);
-        }
+        scheduler = ThreadPoolManager.getExpressionScheduledPool("automation");
     }
 
-    private JobKey jobKey;
-    private TriggerKey triggerKey;
+    private TimerExecutionJob job;
+    // private TriggerKey triggerKey;
     private AbstractInstant startTime;
+    private Procedure0 closure;
 
     private boolean cancelled = false;
     private boolean terminated = false;
 
-    public TimerImpl(JobKey jobKey, TriggerKey triggerKey, AbstractInstant startTime) {
-        this.jobKey = jobKey;
-        this.triggerKey = triggerKey;
+    public TimerImpl(TimerExecutionJob job, AbstractInstant startTime, Procedure0 closure) {
+        this.job = job;
+        // this.triggerKey = triggerKey;
         this.startTime = startTime;
+        this.closure = closure;
     }
 
     @Override
     public boolean cancel() {
         try {
-            boolean result = scheduler.deleteJob(jobKey);
+            boolean result = scheduler.remove(job);
             if (result) {
                 cancelled = true;
             }
-        } catch (SchedulerException e) {
+        } catch (Exception e) {
             logger.warn("An error occured while cancelling the job '{}': {}",
-                    new String[] { jobKey.toString(), e.getMessage() });
+                    new Object[] { job.toString(), e.getMessage() });
         }
         return cancelled;
     }
@@ -74,29 +67,32 @@ public class TimerImpl implements Timer {
     @Override
     public boolean reschedule(AbstractInstant newTime) {
         try {
-            Trigger trigger = newTrigger().startAt(newTime.toDate()).build();
-            scheduler.rescheduleJob(triggerKey, trigger);
-            this.triggerKey = trigger.getKey();
+            // Trigger trigger = newTrigger().startAt(newTime.toDate()).build();
+            // DateExpression exprssion = new DateExpression(newTime.toDate());
+            // scheduler.rescheduleJob(triggerKey, trigger);
+            // this.triggerKey = trigger.getKey();
+            ScriptExecution.createTimer(newTime, closure);
             this.cancelled = false;
             this.terminated = false;
             return true;
-        } catch (SchedulerException e) {
+        } catch (Exception e) {
             logger.warn("An error occured while rescheduling the job '{}': {}",
-                    new String[] { jobKey.toString(), e.getMessage() });
+                    new Object[] { job.toString(), e.getMessage() });
             return false;
         }
     }
 
     @Override
     public boolean isRunning() {
+
         try {
-            for (JobExecutionContext context : scheduler.getCurrentlyExecutingJobs()) {
-                if (context.getJobDetail().getKey().equals(jobKey)) {
+            for (Runnable runnable : scheduler.getRunning()) {
+                if (runnable.equals(job)) {
                     return true;
                 }
             }
             return false;
-        } catch (SchedulerException e) {
+        } catch (Exception e) {
             // fallback implementation
             logger.debug("An error occured getting currently running jobs: {}", e.getMessage());
             return DateTime.now().isAfter(startTime) && !terminated;
