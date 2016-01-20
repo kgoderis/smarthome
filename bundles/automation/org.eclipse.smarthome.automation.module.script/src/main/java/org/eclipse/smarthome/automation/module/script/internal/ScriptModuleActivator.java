@@ -48,10 +48,12 @@ public class ScriptModuleActivator implements BundleActivator {
     @SuppressWarnings("rawtypes")
     private ServiceRegistration factoryRegistration;
     @SuppressWarnings("rawtypes")
+    private ServiceRegistration engineManagerRegistration;
+    @SuppressWarnings("rawtypes")
     private ServiceTracker scriptScopeProviderServiceTracker;
     static private Set<ScriptScopeProvider> scriptScopeProviders;
 
-    private final static ScriptEngineManager engineManager = new ScriptEngineManager();
+    private static ScriptEngineManager engineManager = new ScriptEngineManager();
 
     protected final static Map<String, ScriptEngine> engines = new HashMap<>();
 
@@ -73,6 +75,8 @@ public class ScriptModuleActivator implements BundleActivator {
         moduleHandlerFactory.activate();
         this.factoryRegistration = bundleContext.registerService(ModuleHandlerFactory.class.getName(),
                 this.moduleHandlerFactory, null);
+        this.engineManagerRegistration = bundleContext.registerService(ScriptEngineManager.class.getName(),
+                ScriptModuleActivator.engineManager, null);
         scriptScopeProviders = new CopyOnWriteArraySet<ScriptScopeProvider>();
         scriptScopeProviderServiceTracker = new ServiceTracker(bundleContext, ScriptScopeProvider.class.getName(),
                 new ServiceTrackerCustomizer() {
@@ -126,6 +130,9 @@ public class ScriptModuleActivator implements BundleActivator {
         this.moduleHandlerFactory.dispose();
         if (this.factoryRegistration != null) {
             this.factoryRegistration.unregister();
+        }
+        if (this.engineManagerRegistration != null) {
+            this.engineManagerRegistration.unregister();
         }
         this.moduleHandlerFactory = null;
         this.scriptScopeProviderServiceTracker.close();
