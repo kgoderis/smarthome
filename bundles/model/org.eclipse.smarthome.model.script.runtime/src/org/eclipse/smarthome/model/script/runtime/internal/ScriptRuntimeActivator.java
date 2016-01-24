@@ -11,7 +11,6 @@ import org.eclipse.smarthome.model.core.ModelRepository;
 import org.eclipse.smarthome.model.script.runtime.ScriptRuntime;
 import org.osgi.framework.BundleActivator;
 import org.osgi.framework.BundleContext;
-import org.osgi.util.tracker.ServiceTracker;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -19,18 +18,14 @@ public class ScriptRuntimeActivator implements ScriptRuntime, BundleActivator {
 
     private final Logger logger = LoggerFactory.getLogger(ScriptRuntimeActivator.class);
 
-    public static ServiceTracker<ModelRepository, ModelRepository> modelRepositoryTracker;
+    protected static ModelRepository modelRepository;
 
     @Override
     public void start(BundleContext bc) throws Exception {
-        modelRepositoryTracker = new ServiceTracker<ModelRepository, ModelRepository>(bc, ModelRepository.class, null);
-        modelRepositoryTracker.open();
     }
 
     @Override
     public void stop(BundleContext bc) throws Exception {
-        modelRepositoryTracker.close();
-
     }
 
     public void activate() throws Exception {
@@ -39,6 +34,18 @@ public class ScriptRuntimeActivator implements ScriptRuntime, BundleActivator {
     }
 
     public void deactivate() throws Exception {
+    }
+
+    public void setModelRepository(ModelRepository modelRepository) {
+        ScriptRuntimeActivator.modelRepository = modelRepository;
+    }
+
+    public void unsetModelRepository(ModelRepository modelRepository) {
+        ScriptRuntimeActivator.modelRepository = null;
+    }
+
+    public static ModelRepository getModelRepository() {
+        return modelRepository;
     }
 
 }

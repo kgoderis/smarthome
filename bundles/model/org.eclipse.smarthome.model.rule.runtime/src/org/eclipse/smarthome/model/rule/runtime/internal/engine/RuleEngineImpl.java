@@ -7,45 +7,45 @@
  */
 package org.eclipse.smarthome.model.rule.runtime.internal.engine;
 
-import static org.eclipse.smarthome.model.rule.runtime.internal.engine.RuleTriggerManager.TriggerTypes.*;
-
 import java.util.ArrayList;
-import java.util.Collection;
+import java.util.HashMap;
 import java.util.List;
-import java.util.concurrent.Executors;
-import java.util.concurrent.ScheduledExecutorService;
+import java.util.Map;
+import java.util.Set;
+import java.util.UUID;
 import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.TimeUnit;
 
 import org.eclipse.emf.ecore.EObject;
-import org.eclipse.smarthome.core.items.GenericItem;
-import org.eclipse.smarthome.core.items.Item;
-import org.eclipse.smarthome.core.items.ItemNotFoundException;
-import org.eclipse.smarthome.core.items.ItemRegistry;
-import org.eclipse.smarthome.core.items.ItemRegistryChangeListener;
-import org.eclipse.smarthome.core.items.StateChangeListener;
+import org.eclipse.smarthome.automation.Action;
+import org.eclipse.smarthome.automation.RuleRegistry;
+import org.eclipse.smarthome.automation.Trigger;
+import org.eclipse.smarthome.automation.Visibility;
+import org.eclipse.smarthome.config.core.ConfigDescriptionParameter;
+import org.eclipse.smarthome.config.core.ConfigDescriptionParameter.Type;
+import org.eclipse.smarthome.core.common.ThreadPoolManager;
+import org.eclipse.smarthome.core.common.ThreadPoolManager.ExpressionThreadPoolExecutor;
 import org.eclipse.smarthome.core.items.events.AbstractItemEventSubscriber;
-import org.eclipse.smarthome.core.items.events.ItemCommandEvent;
-import org.eclipse.smarthome.core.types.Command;
-import org.eclipse.smarthome.core.types.State;
 import org.eclipse.smarthome.model.core.ModelRepository;
 import org.eclipse.smarthome.model.core.ModelRepositoryChangeListener;
-import org.eclipse.smarthome.model.rule.RulesStandaloneSetup;
-import org.eclipse.smarthome.model.rule.jvmmodel.RulesJvmModelInferrer;
+import org.eclipse.smarthome.model.rule.rules.ChangedEventTrigger;
+import org.eclipse.smarthome.model.rule.rules.CommandEventTrigger;
+import org.eclipse.smarthome.model.rule.rules.EventTrigger;
 import org.eclipse.smarthome.model.rule.rules.Rule;
 import org.eclipse.smarthome.model.rule.rules.RuleModel;
+import org.eclipse.smarthome.model.rule.rules.SystemOnShutdownTrigger;
+import org.eclipse.smarthome.model.rule.rules.SystemOnStartupTrigger;
+import org.eclipse.smarthome.model.rule.rules.TimerTrigger;
+import org.eclipse.smarthome.model.rule.rules.UpdateEventTrigger;
 import org.eclipse.smarthome.model.rule.runtime.RuleEngine;
 import org.eclipse.smarthome.model.rule.runtime.RuleRuntime;
-import org.eclipse.smarthome.model.script.engine.Script;
-import org.eclipse.smarthome.model.script.engine.ScriptEngine;
-import org.eclipse.smarthome.model.script.engine.ScriptExecutionException;
-import org.eclipse.smarthome.model.script.engine.ScriptExecutionThread;
-import org.eclipse.xtext.naming.QualifiedName;
+import org.eclipse.smarthome.model.rule.runtime.automation.RuleRuntimeHandlerFactory;
+import org.eclipse.smarthome.model.rule.runtime.automation.SystemTriggerHandler;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import com.google.common.collect.Lists;
-import com.google.inject.Injector;
+import com.google.common.collect.Sets;
 
 /**
  * This class is the core of the openHAB rule engine.
@@ -54,24 +54,25 @@ import com.google.inject.Injector;
  *
  * @author Kai Kreuzer - Initial contribution and API
  * @author Oliver Libutzki - Bugfixing
+ * @author Karel Goderis - Migration to the Automation API
  *
  */
 @SuppressWarnings("restriction")
-public class RuleEngineImpl extends AbstractItemEventSubscriber
-        implements ItemRegistryChangeListener, StateChangeListener, ModelRepositoryChangeListener, RuleEngine {
+public class RuleEngineImpl extends AbstractItemEventSubscriber implements ModelRepositoryChangeListener, RuleEngine {
 
     private final Logger logger = LoggerFactory.getLogger(RuleEngineImpl.class);
 
-    protected final ScheduledExecutorService scheduler = Executors.newSingleThreadScheduledExecutor();
+    public static final String CONFIG_SCRIPT_TYPE = "type";
+    public static final String CONFIG_SCRIPT = "script";
 
-    private ItemRegistry itemRegistry;
     private ModelRepository modelRepository;
-    private ScriptEngine scriptEngine;
     private RuleRuntime ruleRuntime;
+    private RuleRegistry ruleRegistry;
+    private RuleRuntimeHandlerFactory factory;
 
-    private RuleTriggerManager triggerManager;
-
-    private Injector injector;
+    private ArrayList<String> startupTriggers = new ArrayList<String>();
+    private ArrayList<String> shutdownTriggers = new ArrayList<String>();
+    private HashMap<String, String> ruleMap = new HashMap<String, String>();
 
     private ScheduledFuture<?> startupJob;
 
@@ -83,9 +84,6 @@ public class RuleEngineImpl extends AbstractItemEventSubscriber
     };
 
     public void activate() {
-        injector = RulesStandaloneSetup.getInjector();
-        triggerManager = injector.getInstance(RuleTriggerManager.class);
-
         if (!isEnabled()) {
             logger.info("Rule engine is disabled.");
             return;
@@ -100,32 +98,29 @@ public class RuleEngineImpl extends AbstractItemEventSubscriber
             EObject model = modelRepository.getModel(ruleModelName);
             if (model instanceof RuleModel) {
                 RuleModel ruleModel = (RuleModel) model;
-                triggerManager.addRuleModel(ruleModel);
+                // triggerManager.addRuleModel(ruleModel);
+                buildRuleModel(ruleModelName, ruleModel);
             }
         }
 
-        // register us on all items which are already available in the registry
-        for (Item item : itemRegistry.getItems()) {
-            internalItemAdded(item);
-        }
         scheduleStartupRules();
     }
 
     public void deactivate() {
-        // execute all scripts that were registered for system shutdown
-        executeRules(triggerManager.getRules(SHUTDOWN));
-        triggerManager.clearAll();
-        triggerManager = null;
-    }
+        List<String> firedTriggers = Lists.newArrayList();
 
-    public void setItemRegistry(ItemRegistry itemRegistry) {
-        this.itemRegistry = itemRegistry;
-        itemRegistry.addRegistryChangeListener(this);
-    }
+        for (String shutdownTrigger : shutdownTriggers) {
+            SystemTriggerHandler handler = factory.getTriggerHandler(shutdownTrigger);
+            if (handler != null) {
+                logger.debug("Executing shutdown rule '{}'", ruleRegistry.get(handler.getRuleUID()).getDescription());
+                firedTriggers.add(shutdownTrigger);
+                handler.trigger();
+            }
+        }
 
-    public void unsetItemRegistry(ItemRegistry itemRegistry) {
-        itemRegistry.removeRegistryChangeListener(this);
-        this.itemRegistry = null;
+        for (String aTrigger : firedTriggers) {
+            shutdownTriggers.remove(aTrigger);
+        }
     }
 
     public void setModelRepository(ModelRepository modelRepository) {
@@ -138,14 +133,6 @@ public class RuleEngineImpl extends AbstractItemEventSubscriber
         this.modelRepository = null;
     }
 
-    public void setScriptEngine(ScriptEngine scriptEngine) {
-        this.scriptEngine = scriptEngine;
-    }
-
-    public void unsetScriptEngine(ScriptEngine scriptEngine) {
-        this.scriptEngine = null;
-    }
-
     protected void setRuleRuntime(final RuleRuntime ruleRuntime) {
         this.ruleRuntime = ruleRuntime;
     }
@@ -154,179 +141,64 @@ public class RuleEngineImpl extends AbstractItemEventSubscriber
         this.ruleRuntime = null;
     }
 
-    /**
-     * {@inheritDoc}
-     */
-    @Override
-    public void allItemsChanged(Collection<String> oldItemNames) {
-        // add the current items again
-        Collection<Item> items = itemRegistry.getItems();
-        for (Item item : items) {
-            internalItemAdded(item);
-        }
-        scheduleStartupRules();
+    protected void setRuleRegistry(RuleRegistry registry) {
+        this.ruleRegistry = registry;
     }
 
-    /**
-     * {@inheritDoc}
-     */
-    @Override
-    public void added(Item item) {
-        internalItemAdded(item);
-        scheduleStartupRules();
+    protected void unsetRuleRegistry(RuleRegistry registry) {
+        this.ruleRegistry = null;
     }
 
-    /**
-     * {@inheritDoc}
-     */
-    @Override
-    public void removed(Item item) {
-        if (item instanceof GenericItem) {
-            GenericItem genericItem = (GenericItem) item;
-            genericItem.removeStateChangeListener(this);
-        }
+    public void setHandlerFactory(RuleRuntimeHandlerFactory factory) {
+        this.factory = factory;
     }
 
-    /**
-     * {@inheritDoc}
-     */
-    @Override
-    public void stateChanged(Item item, State oldState, State newState) {
-        if (triggerManager != null) {
-            Iterable<Rule> rules = triggerManager.getRules(CHANGE, item, oldState, newState);
-
-            executeRules(rules, oldState);
-        }
-    }
-
-    /**
-     * {@inheritDoc}
-     */
-    @Override
-    public void stateUpdated(Item item, State state) {
-        if (triggerManager != null) {
-            Iterable<Rule> rules = triggerManager.getRules(UPDATE, item, state);
-            executeRules(rules);
-        }
-    }
-
-    @Override
-    protected void receiveCommand(ItemCommandEvent commandEvent) {
-        if (triggerManager != null && itemRegistry != null) {
-            String itemName = commandEvent.getItemName();
-            Command command = commandEvent.getItemCommand();
-            try {
-                Item item = itemRegistry.getItem(itemName);
-                Iterable<Rule> rules = triggerManager.getRules(COMMAND, item, command);
-
-                executeRules(rules, command);
-            } catch (ItemNotFoundException e) {
-                // ignore commands for non-existent items
-            }
-        }
-    }
-
-    private void internalItemAdded(Item item) {
-        if (item instanceof GenericItem) {
-            GenericItem genericItem = (GenericItem) item;
-            genericItem.addStateChangeListener(this);
-        }
+    public void unsetHandlerFactory(RuleRuntimeHandlerFactory factory) {
+        factory = null;
     }
 
     @Override
     public void modelChanged(String modelName, org.eclipse.smarthome.model.core.EventType type) {
-        if (triggerManager != null) {
-            if (isEnabled() && modelName.endsWith("rules")) {
-                RuleModel model = (RuleModel) modelRepository.getModel(modelName);
+        if (isEnabled() && modelName.endsWith("rules")) {
+            RuleModel model = (RuleModel) modelRepository.getModel(modelName);
 
-                // remove the rules from the trigger sets
-                if (type == org.eclipse.smarthome.model.core.EventType.REMOVED
-                        || type == org.eclipse.smarthome.model.core.EventType.MODIFIED) {
-                    triggerManager.removeRuleModel(model);
-                }
+            // remove the rules from the trigger sets
+            if (type == org.eclipse.smarthome.model.core.EventType.REMOVED
+                    || type == org.eclipse.smarthome.model.core.EventType.MODIFIED) {
+                removeRuleModel(modelName, model);
+            }
 
-                // add new and modified rules to the trigger sets
-                if (model != null && (type == org.eclipse.smarthome.model.core.EventType.ADDED
-                        || type == org.eclipse.smarthome.model.core.EventType.MODIFIED)) {
-                    triggerManager.addRuleModel(model);
-                    // now execute all rules that are meant to trigger at startup
-                    scheduleStartupRules();
-                }
+            // add new and modified rules to the trigger sets
+            if (model != null && (type == org.eclipse.smarthome.model.core.EventType.ADDED
+                    || type == org.eclipse.smarthome.model.core.EventType.MODIFIED)) {
+                buildRuleModel(modelName, model);
+                // now execute all rules that are meant to trigger at startup
+                scheduleStartupRules();
             }
         }
     }
 
     private void scheduleStartupRules() {
         if (startupJob == null || startupJob.isCancelled() || startupJob.isDone()) {
+            ExpressionThreadPoolExecutor scheduler = ThreadPoolManager.getExpressionScheduledPool("automation");
             startupJob = scheduler.schedule(startupRunnable, 5, TimeUnit.SECONDS);
         }
     }
 
     private void runStartupRules() {
-        if (triggerManager != null) {
-            Iterable<Rule> startupRules = triggerManager.getRules(STARTUP);
-            List<Rule> executedRules = Lists.newArrayList();
+        List<String> firedTriggers = Lists.newArrayList();
 
-            for (Rule rule : startupRules) {
-                try {
-                    Script script = scriptEngine.newScriptFromXExpression(rule.getScript());
-                    logger.debug("Executing startup rule '{}'", rule.getName());
-                    RuleEvaluationContext context = new RuleEvaluationContext();
-                    context.setGlobalContext(RuleContextHelper.getContext(rule, injector));
-                    script.execute(context);
-                    executedRules.add(rule);
-                } catch (ScriptExecutionException e) {
-                    if (!e.getMessage().contains("cannot be resolved to an item or type")) {
-                        logger.error("Error during the execution of startup rule '{}': {}",
-                                new Object[] { rule.getName(), e.getCause().getMessage() });
-                        executedRules.add(rule);
-                    } else {
-                        logger.debug("Execution of startup rule '{}' has been postponed as items are still missing.",
-                                rule.getName());
-                    }
-                }
-            }
-            for (Rule rule : executedRules) {
-                triggerManager.removeRule(STARTUP, rule);
+        for (String startTrigger : startupTriggers) {
+            SystemTriggerHandler handler = factory.getTriggerHandler(startTrigger);
+            if (handler != null) {
+                logger.debug("Executing startup rule '{}'", ruleRegistry.get(handler.getRuleUID()).getDescription());
+                firedTriggers.add(startTrigger);
+                handler.trigger();
             }
         }
-    }
 
-    protected synchronized void executeRule(Rule rule) {
-        executeRule(rule, new RuleEvaluationContext());
-    }
-
-    protected synchronized void executeRule(Rule rule, RuleEvaluationContext context) {
-        Script script = scriptEngine.newScriptFromXExpression(rule.getScript());
-
-        logger.debug("Executing rule '{}'", rule.getName());
-
-        context.setGlobalContext(RuleContextHelper.getContext(rule, injector));
-
-        ScriptExecutionThread thread = new ScriptExecutionThread(rule.getName(), script, context);
-        thread.start();
-    }
-
-    protected synchronized void executeRules(Iterable<Rule> rules) {
-        for (Rule rule : rules) {
-            RuleEvaluationContext context = new RuleEvaluationContext();
-            executeRule(rule, context);
-        }
-    }
-
-    protected synchronized void executeRules(Iterable<Rule> rules, Command command) {
-        for (Rule rule : rules) {
-            RuleEvaluationContext context = new RuleEvaluationContext();
-            context.newValue(QualifiedName.create(RulesJvmModelInferrer.VAR_RECEIVED_COMMAND), command);
-            executeRule(rule, context);
-        }
-    }
-
-    protected synchronized void executeRules(Iterable<Rule> rules, State oldState) {
-        for (Rule rule : rules) {
-            RuleEvaluationContext context = new RuleEvaluationContext();
-            context.newValue(QualifiedName.create(RulesJvmModelInferrer.VAR_PREVIOUS_STATE), oldState);
-            executeRule(rule, context);
+        for (String aTrigger : firedTriggers) {
+            startupTriggers.remove(aTrigger);
         }
     }
 
@@ -340,9 +212,147 @@ public class RuleEngineImpl extends AbstractItemEventSubscriber
         return !"true".equalsIgnoreCase(System.getProperty("noRules"));
     }
 
-    @Override
-    public void updated(Item oldItem, Item item) {
-        removed(oldItem);
-        added(item);
+    private void buildRuleModel(String modelName, RuleModel ruleModel) {
+        for (Rule rule : ruleModel.getRules()) {
+            buildRule(modelName, rule);
+        }
+    }
+
+    private void buildRule(String modelName, Rule rule) {
+
+        ArrayList<Trigger> triggers = new ArrayList<Trigger>();
+
+        String ruleName = rule.getName();
+        String ruleUID = UUID.randomUUID().toString();
+
+        logger.debug("Adding the rule '{}' from '{}' to the RuleEngine", rule.getName(), modelName);
+
+        int counter = 1;
+        for (EventTrigger t : rule.getEventtrigger()) {
+            // add the rule to the lookup map for the trigger kind
+            if (t instanceof SystemOnStartupTrigger) {
+                Trigger aTrigger = new Trigger(UUID.randomUUID().toString(), "SystemTrigger", null);
+                aTrigger.setDescription(rule.getName() + " : " + "Startup Trigger " + "#" + counter);
+                startupTriggers.add(ruleUID + aTrigger.getId());
+                triggers.add(aTrigger);
+            } else if (t instanceof SystemOnShutdownTrigger) {
+                Trigger aTrigger = new Trigger(UUID.randomUUID().toString(), "SystemTrigger", null);
+                aTrigger.setDescription(rule.getName() + " : " + "Shutdown Trigger " + "#" + counter);
+                shutdownTriggers.add(ruleUID + aTrigger.getId());
+                triggers.add(aTrigger);
+            } else if (t instanceof CommandEventTrigger) {
+                CommandEventTrigger ceTrigger = (CommandEventTrigger) t;
+                Map<String, String> triggerConfig = new HashMap<String, String>();
+                triggerConfig.put("itemName", ceTrigger.getItem());
+                Trigger aTrigger = new Trigger(UUID.randomUUID().toString(), "ItemCommandTrigger", triggerConfig);
+                aTrigger.setDescription(rule.getName() + " : " + "Command Trigger " + "#" + ceTrigger.getItem());
+                triggers.add(aTrigger);
+            } else if (t instanceof UpdateEventTrigger) {
+                UpdateEventTrigger ueTrigger = (UpdateEventTrigger) t;
+                Map<String, String> triggerConfig = new HashMap<String, String>();
+                triggerConfig.put("itemName", ueTrigger.getItem());
+                Trigger aTrigger = new Trigger(UUID.randomUUID().toString(), "ItemStateChangeTrigger", triggerConfig);
+                aTrigger.setDescription(rule.getName() + " : " + "Update  Trigger " + "#" + ueTrigger.getItem());
+                triggers.add(aTrigger);
+            } else if (t instanceof ChangedEventTrigger) {
+                ChangedEventTrigger ceTrigger = (ChangedEventTrigger) t;
+                Map<String, String> triggerConfig = new HashMap<String, String>();
+                triggerConfig.put("itemName", ceTrigger.getItem());
+                Trigger aTrigger = new Trigger(UUID.randomUUID().toString(), "ItemStateChangedTrigger", triggerConfig);
+                aTrigger.setDescription(rule.getName() + " : " + "Changed Trigger " + "#" + ceTrigger.getItem());
+                triggers.add(aTrigger);
+            } else if (t instanceof TimerTrigger) {
+                TimerTrigger tTrigger = (TimerTrigger) t;
+                String cronExpression = getCronExpression(tTrigger, rule);
+                Map<String, String> triggerConfig = new HashMap<String, String>();
+                triggerConfig.put("cronExpression", cronExpression);
+                Trigger aTrigger = new Trigger(UUID.randomUUID().toString(), "CronTrigger", triggerConfig);
+                aTrigger.setDescription(rule.getName() + " : " + "Timer Trigger " + "#" + cronExpression);
+                triggers.add(aTrigger);
+                counter++;
+            }
+        }
+
+        Map<String, String> actionConfig = new HashMap<String, String>();
+        actionConfig.put(CONFIG_SCRIPT_TYPE, "eclipse/rule");
+        actionConfig.put(CONFIG_SCRIPT, modelName + "." + rule.getName());
+
+        ArrayList<Action> actions = new ArrayList<Action>();
+        Action action = new Action(UUID.randomUUID().toString(), "ScriptAction", actionConfig, null);
+        action.setDescription(rule.getName() + " : " + "Script Action");
+        actions.add(action);
+
+        List<ConfigDescriptionParameter> configDescriptions = new ArrayList<ConfigDescriptionParameter>();
+        ConfigDescriptionParameter type = new ConfigDescriptionParameter(CONFIG_SCRIPT_TYPE, Type.TEXT, null, null,
+                null, null, true, true, false, null, null, "Type", "Script type", null, null, null, null, null, null);
+        ConfigDescriptionParameter script = new ConfigDescriptionParameter(CONFIG_SCRIPT, Type.TEXT, null, null, null,
+                null, true, true, false, null, null, "Script", "Script expression", null, null, null, null, null, null);
+        configDescriptions.add(type);
+        configDescriptions.add(script);
+
+        org.eclipse.smarthome.automation.Rule theRule = new org.eclipse.smarthome.automation.Rule(ruleUID, triggers,
+                null, actions, configDescriptions, null, Visibility.VISIBLE);
+        theRule.setName(modelName + " : " + rule.getName());
+
+        ruleMap.put(ruleName, ruleUID);
+
+        ruleRegistry.add(theRule);
+    }
+
+    private void removeRuleModel(String modelName, RuleModel ruleModel) {
+        for (Rule rule : ruleModel.getRules()) {
+            removeRule(modelName, rule);
+        }
+    }
+
+    private void removeRule(String modelName, Rule rule) {
+        logger.debug("Removing the rule '{}' from the RuleEngine", rule.getName());
+
+        List<String> removeTriggers = Lists.newArrayList();
+        for (String aTrigger : startupTriggers) {
+            if (aTrigger.contains(ruleMap.get(rule.getName()))) {
+                removeTriggers.add(aTrigger);
+            }
+        }
+        for (String aTrigger : removeTriggers) {
+            startupTriggers.remove(aTrigger);
+        }
+
+        removeTriggers = Lists.newArrayList();
+        for (String aTrigger : shutdownTriggers) {
+            if (aTrigger.contains(ruleMap.get(rule.getName()))) {
+                removeTriggers.add(aTrigger);
+            }
+        }
+        for (String aTrigger : removeTriggers) {
+            shutdownTriggers.remove(aTrigger);
+        }
+
+        Set<org.eclipse.smarthome.automation.Rule> removeRules = Sets.newHashSet();
+        for (org.eclipse.smarthome.automation.Rule aRule : ruleRegistry.getAll()) {
+            if (aRule.getUID().equals(ruleMap.get(rule.getName()))) {
+                removeRules.add(aRule);
+            }
+        }
+        for (org.eclipse.smarthome.automation.Rule aRule : removeRules) {
+            ruleRegistry.remove(aRule.getUID());
+        }
+    }
+
+    private String getCronExpression(TimerTrigger t, Rule rule) {
+        String cronExpression = t.getCron();
+        if (t.getTime() != null) {
+            if (t.getTime().equals("noon")) {
+                cronExpression = "0 0 12 * * ?";
+            } else if (t.getTime().equals("midnight")) {
+                cronExpression = "0 0 0 * * ?";
+            } else {
+                logger.warn("Unrecognized time expression '{}' in rule '{}'",
+                        new Object[] { t.getTime(), rule.getName() });
+                cronExpression = null;
+            }
+        }
+
+        return cronExpression;
     }
 }

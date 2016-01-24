@@ -32,6 +32,7 @@ public class XtextScriptEngineFactory implements ScriptEngineFactory {
         ArrayList<String> extList = new ArrayList<String>();
         extList.add("eclipse/script");
         extList.add("eclipse/scriptfile");
+        extList.add("eclipse/rule");
         return extList;
     }
 

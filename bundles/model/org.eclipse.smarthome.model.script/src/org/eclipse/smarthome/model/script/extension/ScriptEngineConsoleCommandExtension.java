@@ -11,16 +11,18 @@ import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.UUID;
 
 import org.eclipse.smarthome.automation.Rule;
 import org.eclipse.smarthome.io.console.Console;
 import org.eclipse.smarthome.io.console.extensions.AbstractConsoleCommandExtension;
+import org.eclipse.smarthome.io.console.extensions.ConsoleCommandExtension;
 import org.eclipse.smarthome.model.script.engine.automation.ExecuteScriptHandlerFactory;
-import org.eclipse.smarthome.model.script.engine.automation.ExecuteScriptTriggerHandler;
 import org.eclipse.smarthome.model.script.engine.automation.ExecuteScriptRuleProvider;
+import org.eclipse.smarthome.model.script.engine.automation.ExecuteScriptTriggerHandler;
 import org.osgi.framework.BundleContext;
 import org.osgi.framework.ServiceRegistration;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import com.google.common.base.Joiner;
 
@@ -28,26 +30,47 @@ import com.google.common.base.Joiner;
  * This class provides the script engine as a console command
  *
  * @author Oliver Libutzki - Initial contribution
- * @param <ExecuteScriptRuleProvider>
+ * @author Karel Goderis - Migration to Automation
  *
  */
-public class ScriptEngineConsoleCommandExtension<ExecuteScriptRuleProvider> extends AbstractConsoleCommandExtension {
+public class ScriptEngineConsoleCommandExtension extends AbstractConsoleCommandExtension {
+
+    private static final Logger logger = LoggerFactory.getLogger(ScriptEngineConsoleCommandExtension.class);
 
     @SuppressWarnings("rawtypes")
     private ServiceRegistration scriptCommandsServiceReg;
     private ExecuteScriptHandlerFactory factory;
     private ExecuteScriptRuleProvider provider;
 
-    public ScriptEngineConsoleCommandExtension(BundleContext bc, ExecuteScriptHandlerFactory ruleHandlerFactory,
-            ExecuteScriptRuleProvider provider) {
+    public void setRuleProvider(ExecuteScriptRuleProvider ruleProvider) {
+        provider = ruleProvider;
+    }
+
+    public void unsetRuleProvider(ExecuteScriptRuleProvider ruleProvider) {
+        provider = null;
+    }
+
+    public void setHandlerFactory(ExecuteScriptHandlerFactory factory) {
+        this.factory = factory;
+    }
+
+    public void unsetHandlerFactory(ExecuteScriptHandlerFactory factory) {
+        factory = null;
+    }
+
+    // public ScriptEngineConsoleCommandExtension(BundleContext bc, ExecuteScriptHandlerFactory ruleHandlerFactory,
+    // ExecuteScriptRuleProvider provider) {
+    // super(">", "Execute scripts");
+    // this.factory = ruleHandlerFactory;
+    // this.provider = provider;
+    // }
+
+    public ScriptEngineConsoleCommandExtension() {
         super(">", "Execute scripts");
-        this.factory = ruleHandlerFactory;
-        this.provider = provider;
     }
 
     public void register(BundleContext context) {
-        scriptCommandsServiceReg = context.registerService(ScriptEngineConsoleCommandExtension.class.getName(), this,
-                null);
+        scriptCommandsServiceReg = context.registerService(ConsoleCommandExtension.class.getName(), this, null);
     }
 
     public void unregister() {
@@ -61,63 +84,21 @@ public class ScriptEngineConsoleCommandExtension<ExecuteScriptRuleProvider> exte
     @Override
     public void execute(String[] args, Console console) {
 
-        String uid = UUID.randomUUID().toString();
-        //
-        // ArrayList<org.eclipse.smarthome.automation.Trigger> triggers = new
-        // ArrayList<org.eclipse.smarthome.automation.Trigger>();
-        // HashMap<String, Object> triggerConfig = new HashMap<String, Object>();
-        // Trigger trigger = new Trigger(uid + "_trigger", "RuleStartTrigger", triggerConfig);
-        // triggers.add(trigger);
-        //
-        // ArrayList<Action> actions = new ArrayList<Action>();
-        // HashMap<String, String> actionConfig = new HashMap<String, String>();
-        // actions.add(new Action(UUID.randomUUID().toString(), "ScriptAction", actionConfig, null));
-        //
-        // Rule theRule = new Rule(uid + "_rule_", triggers, null, actions,
-        // new ArrayList<ConfigDescriptionParameter>(), null, Visibility.VISIBLE);
-        // ruleRegistry.add(theRule);
-        //
-        // RuleStartHandlerFactory factory = ScriptActivator.getRuleStartHandlerFactory();
-        // RuleStartTriggerHandler handler = (RuleStartTriggerHandler) factory.getHandler(trigger, uid + "_rule");
-        // handler.trigger();
-
-        // initialize the output of the trigger of the rule WelcomeHomeRulesProvider.AC_UID
-
         String scriptString = Joiner.on(" ").join(args);
-
-        Rule rule = provider.createScriptRule(uid, "eclipse/script", scriptString);
+        Rule rule = provider.createScriptRule(scriptString, "eclipse/script");
 
         Map<String, Object> context = new HashMap<String, Object>();
 
-        // causes the execution of the rule WelcomeHomeRulesProvider.LRL_UID
         ExecuteScriptTriggerHandler handler = factory
-                .getTriggerHandler(ExecuteScriptRuleProvider.EXECUTE_SCRIPT_RULE_UID + "." + uid);
+                .getTriggerHandler(rule.getUID() + ExecuteScriptRuleProvider.EXECUTE_SCRIPT_RULE_TRIGGER_TYPE_UID);
         if (handler != null) {
+            logger.debug("Executing a console script '{}'", scriptString);
             handler.trigger(context);
         }
 
         // TODO : process results and handling
+        // Automation, for now, does not return the results of Rules executing!!
 
-        // if (scriptEngine != null) {
-        // String scriptString = Joiner.on(" ").join(args);
-        // Script script;
-        // try {
-        // script = scriptEngine.newScriptFromString(scriptString);
-        // Object result = script.execute();
-        //
-        // if (result != null) {
-        // console.println(result.toString());
-        // } else {
-        // console.println("OK");
-        // }
-        // } catch (ScriptParsingException e) {
-        // console.println(e.getMessage());
-        // } catch (ScriptExecutionException e) {
-        // console.println(e.getMessage());
-        // }
-        // } else {
-        // console.println("Script engine is not available.");
-        // }
     }
 
     @Override

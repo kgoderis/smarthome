@@ -1,0 +1,43 @@
+[  
+  {  
+    "uid":"ExecuteScriptRuleTemplate",
+    "description":"Execute Script Rule Template.",
+    "tags":[  
+      "script",
+      "rule",
+      "template"
+    ],
+    "configDescriptions":[  
+         {
+          "name":"type",              
+          "type": "TEXT",
+          "description": "Script type",
+          "required": true
+        },
+         {
+          "name":"script",              
+          "type": "TEXT",
+          "description": "Script expression",
+          "required": true
+        }
+    ],
+    "triggers": [  
+      {  
+        "id": "ExcecuteScriptRuleTrigger",
+        "type": "ExecuteScriptTrigger"
+      }
+    ],
+    "conditions": [
+    ],
+    "actions": [
+      {  
+        "id": "ExcecuteScriptRuleAction",
+        "type": "ScriptAction",
+        "configuration": {
+          "type": "$type",
+          "script": "$script"
+        }
+      }
+    ]
+  }
+]

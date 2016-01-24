@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<scr:component xmlns:scr="http://www.osgi.org/xmlns/scr/v1.1.0" immediate="true" name="org.eclipse.smarthome.model.script.execution">
+   <implementation class="org.eclipse.smarthome.model.script.actions.ScriptExecution"/>
+   
+   <reference bind="setRuleProvider" cardinality="1..1" interface="org.eclipse.smarthome.model.script.engine.automation.ExecuteScriptRuleProvider" name="ExecuteScriptRuleProvider" policy="static" unbind="unsetRuleProvider"/>
+   <reference bind="setModelRepository" cardinality="1..1" interface="org.eclipse.smarthome.model.core.ModelRepository" name="ModelRepository" policy="static" unbind="unsetModelRepository"/>
+   
+</scr:component>

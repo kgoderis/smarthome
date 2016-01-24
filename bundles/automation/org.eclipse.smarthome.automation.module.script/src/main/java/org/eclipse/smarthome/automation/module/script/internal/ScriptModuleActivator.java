@@ -16,6 +16,7 @@ import java.util.concurrent.CopyOnWriteArraySet;
 
 import javax.script.ScriptContext;
 import javax.script.ScriptEngine;
+import javax.script.ScriptEngineFactory;
 import javax.script.ScriptEngineManager;
 import javax.script.ScriptException;
 
@@ -23,6 +24,7 @@ import org.eclipse.smarthome.automation.handler.ModuleHandlerFactory;
 import org.eclipse.smarthome.automation.module.script.ScriptScopeProvider;
 import org.eclipse.smarthome.automation.module.script.internal.factory.ScriptModuleHandlerFactory;
 import org.eclipse.smarthome.automation.module.script.internal.handler.AbstractScriptModuleHandler;
+import org.eclipse.smarthome.model.script.runtime.OSGiScriptEngineManager;
 import org.osgi.framework.BundleActivator;
 import org.osgi.framework.BundleContext;
 import org.osgi.framework.ServiceReference;
@@ -39,6 +41,7 @@ import com.google.common.base.Joiner;
  *
  * @author Kai Kreuzer - Initial contribution
  * @author Simon Merschjohann - original code from openHAB 1
+ * @author Karel Goderis - Fix compatibility between OSGi and JSR 223
  */
 public class ScriptModuleActivator implements BundleActivator {
 
@@ -53,7 +56,7 @@ public class ScriptModuleActivator implements BundleActivator {
     private ServiceTracker scriptScopeProviderServiceTracker;
     static private Set<ScriptScopeProvider> scriptScopeProviders;
 
-    private static ScriptEngineManager engineManager = new ScriptEngineManager();
+    private static ScriptEngineManager engineManager;
 
     protected final static Map<String, ScriptEngine> engines = new HashMap<>();
 
@@ -75,8 +78,7 @@ public class ScriptModuleActivator implements BundleActivator {
         moduleHandlerFactory.activate();
         this.factoryRegistration = bundleContext.registerService(ModuleHandlerFactory.class.getName(),
                 this.moduleHandlerFactory, null);
-        this.engineManagerRegistration = bundleContext.registerService(ScriptEngineManager.class.getName(),
-                ScriptModuleActivator.engineManager, null);
+
         scriptScopeProviders = new CopyOnWriteArraySet<ScriptScopeProvider>();
         scriptScopeProviderServiceTracker = new ServiceTracker(bundleContext, ScriptScopeProvider.class.getName(),
                 new ServiceTrackerCustomizer() {
@@ -114,6 +116,7 @@ public class ScriptModuleActivator implements BundleActivator {
                     }
                 });
         scriptScopeProviderServiceTracker.open();
+        engineManager = new OSGiScriptEngineManager(bundleContext);
 
         logger.debug("Started script automation support");
     }
@@ -149,14 +152,20 @@ public class ScriptModuleActivator implements BundleActivator {
      * @return a script engine that supports scripts of the given mime type
      */
     public static synchronized ScriptEngine getScriptEngine(String type) {
+
         ScriptEngine engine = engines.get(type);
         if (engine == null) {
             engine = engineManager.getEngineByMimeType(type);
             for (ScriptScopeProvider provider : scriptScopeProviders) {
                 initializeScope(engine, provider);
             }
+            ScriptEngineFactory factory = engine.getFactory();
+            logger.info("Added a script engine factory for: {}, Version {}, Language {}, Extensions {}, Mime {}",
+                    new Object[] { factory.getEngineName(), factory.getEngineVersion(), factory.getLanguageName(),
+                            factory.getExtensions(), factory.getMimeTypes() });
             engines.put(type, engine);
         }
+
         return engine;
     }
 
@@ -247,9 +256,6 @@ public class ScriptModuleActivator implements BundleActivator {
      * @param provider the provider holding the elements that should be added to the scope
      */
     private static void initializeGeneralScope(ScriptEngine engine, ScriptScopeProvider provider) {
-        logger.debug("initializing script scope from '{}' for engine '{}'.",
-                new Object[] { provider.getClass().getSimpleName(), engine.getFactory().getEngineName() });
-
         for (Entry<String, Object> entry : provider.getScopeElements().entrySet()) {
             engine.put(entry.getKey(), entry.getValue());
         }

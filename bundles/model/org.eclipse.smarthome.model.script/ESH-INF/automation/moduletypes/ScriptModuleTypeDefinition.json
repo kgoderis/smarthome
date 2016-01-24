@@ -1,0 +1,11 @@
+{  
+   "triggers":[  
+      {  
+         "uid":"ExecuteScriptTrigger",
+         "label":"Execute Script Trigger",
+         "description":"Trigger to execute a script",
+         "outputs":[              
+         ]
+      },
+   ]
+}

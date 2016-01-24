@@ -11,43 +11,37 @@ import java.text.ParseException;
 
 import org.eclipse.smarthome.core.common.ContextRunnable;
 import org.eclipse.smarthome.core.common.DateExpression;
-import org.eclipse.smarthome.core.common.ThreadPoolManager;
 import org.eclipse.smarthome.core.common.ThreadPoolManager.ExpressionThreadPoolExecutor;
 import org.eclipse.smarthome.model.script.actions.Timer;
 import org.eclipse.xtext.xbase.lib.Procedures.Procedure0;
 import org.joda.time.DateTime;
 import org.joda.time.base.AbstractInstant;
-import org.quartz.Job;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 /**
- * This is a Quartz {@link Job} which executes the code of a closure that is passed
+ * This is a Runnable {@link ContextRunnable} which executes the code of a closure that is passed
  * to the createTimer() extension method.
  *
  * @author Kai Kreuzer - Initial contribution and API
+ * @author Karel Goderis - Migration to internal scheduler infrastructure
  *
  */
-public class TimerExecutionJob extends ContextRunnable implements Timer {
+public class TimerRunnable extends ContextRunnable implements Timer {
 
-    private final Logger logger = LoggerFactory.getLogger(TimerExecutionJob.class);
-
-    // the scheduler used for timer events
-    public static ExpressionThreadPoolExecutor scheduler;
-
-    static {
-        scheduler = ThreadPoolManager.getExpressionScheduledPool("automation");
-    }
+    private final Logger logger = LoggerFactory.getLogger(TimerRunnable.class);
 
     private AbstractInstant startTime;
     private Procedure0 closure;
+    private ExpressionThreadPoolExecutor scheduler;
 
     private boolean cancelled = false;
     private boolean terminated = false;
 
-    public TimerExecutionJob(AbstractInstant instant, Procedure0 closure) {
+    public TimerRunnable(AbstractInstant instant, Procedure0 closure, ExpressionThreadPoolExecutor scheduler) {
         this.startTime = instant;
         this.closure = closure;
+        this.scheduler = scheduler;
     }
 
     /**

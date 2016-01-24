@@ -23,7 +23,7 @@ import org.eclipse.smarthome.model.script.engine.automation.ExecuteScriptHandler
 import org.eclipse.smarthome.model.script.engine.automation.ExecuteScriptRuleProvider;
 import org.eclipse.smarthome.model.script.engine.automation.ExecuteScriptTriggerHandler;
 import org.eclipse.smarthome.model.script.internal.ScriptActivator;
-import org.eclipse.smarthome.model.script.internal.actions.TimerExecutionJob;
+import org.eclipse.smarthome.model.script.internal.actions.TimerRunnable;
 import org.eclipse.xtext.xbase.XExpression;
 import org.eclipse.xtext.xbase.lib.Procedures.Procedure0;
 import org.joda.time.base.AbstractInstant;
@@ -40,7 +40,28 @@ import org.slf4j.LoggerFactory;
 @SuppressWarnings("restriction")
 public class ScriptExecution {
 
-    public static Map<String, TimerExecutionJob> timerExecutionJobs = new HashMap<String, TimerExecutionJob>();
+    private static final Logger logger = LoggerFactory.getLogger(ScriptExecution.class);
+
+    public static Map<String, TimerRunnable> timerRunnables = new HashMap<String, TimerRunnable>();
+
+    private static ExecuteScriptRuleProvider ruleProvider;
+    private static ModelRepository modelRepository;
+
+    public void setRuleProvider(ExecuteScriptRuleProvider ruleProvider) {
+        ScriptExecution.ruleProvider = ruleProvider;
+    }
+
+    public void unsetRuleProvider(ExecuteScriptRuleProvider ruleProvider) {
+        ScriptExecution.ruleProvider = null;
+    }
+
+    public void setModelRepository(ModelRepository modelRepository) {
+        ScriptExecution.modelRepository = modelRepository;
+    }
+
+    public void unsetModelRepository(ModelRepository modelRepository) {
+        modelRepository = null;
+    }
 
     /**
      * Calls a script which must be located in the configurations/scripts folder.
@@ -52,37 +73,29 @@ public class ScriptExecution {
      * @throws ScriptExecutionException if an error occurs during the execution
      */
     public static Object callScript(String scriptName) throws ScriptExecutionException {
-        ModelRepository repo = ScriptActivator.modelRepositoryTracker.getService();
-        if (repo != null) {
+        if (modelRepository != null) {
             String scriptNameWithExt = scriptName;
             if (!StringUtils.endsWith(scriptName, Script.SCRIPT_FILEEXT)) {
                 scriptNameWithExt = scriptName + "." + Script.SCRIPT_FILEEXT;
             }
-            XExpression expr = (XExpression) repo.getModel(scriptNameWithExt);
+            XExpression expr = (XExpression) modelRepository.getModel(scriptNameWithExt);
             if (expr != null) {
 
-                ExecuteScriptHandlerFactory factory = ScriptActivator.getExecuteScriptHandlerFactory();
-                ExecuteScriptRuleProvider provider = ScriptActivator.getExecuteScriptRuleProvider();
-                Rule rule = provider.createScriptRule(scriptName, "eclipse/scriptfile", scriptNameWithExt);
+                Rule rule = ruleProvider.createScriptRule(scriptNameWithExt, "eclipse/scriptfile");
 
                 Map<String, Object> context = new HashMap<String, Object>();
 
-                // causes the execution of the rule WelcomeHomeRulesProvider.LRL_UID
-                ExecuteScriptTriggerHandler handler = factory
-                        .getTriggerHandler(ExecuteScriptRuleProvider.EXECUTE_SCRIPT_RULE_UID + "." + scriptName);
+                ExecuteScriptHandlerFactory factory = ScriptActivator.getHandlerFactory();
+                ExecuteScriptTriggerHandler handler = factory.getTriggerHandler(
+                        rule.getUID() + ExecuteScriptRuleProvider.EXECUTE_SCRIPT_RULE_TRIGGER_TYPE_UID);
+
+                logger.debug("Calling script '{}'", scriptNameWithExt);
                 if (handler != null) {
                     handler.trigger(context);
                 } else {
                     throw new ScriptExecutionException("The rule to execute the script is not available.");
                 }
 
-                // ScriptEngine scriptEngine = ScriptActivator.scriptEngineTracker.getService();
-                // if (scriptEngine != null) {
-                // Script script = scriptEngine.newScriptFromXExpression(expr);
-                // return script.execute();
-                // } else {
-                // throw new ScriptExecutionException("Script engine is not available.");
-                // }
             } else {
                 throw new ScriptExecutionException("Script '" + scriptName + "' cannot be found.");
             }
@@ -106,7 +119,6 @@ public class ScriptExecution {
     public static Timer createTimer(AbstractInstant instant, Procedure0 closure) {
         Logger logger = LoggerFactory.getLogger(ScriptExecution.class);
         String jobKey = instant.toString() + ": " + closure.toString();
-        // Trigger trigger = newTrigger().startAt(instant.toDate()).build();
 
         ExpressionThreadPoolExecutor scheduler = ThreadPoolManager.getExpressionScheduledPool("automation");
         DateExpression dateExpression = null;
@@ -117,23 +129,14 @@ public class ScriptExecution {
         }
 
         try {
-            // JobDataMap dataMap = new JobDataMap();
-            // dataMap.put("procedure", closure);
-            // dataMap.put("timer", timer);
-            TimerExecutionJob job = new TimerExecutionJob(instant, closure);
-            // Timer timer = new TimerImpl(job, instant, closure);
+            TimerRunnable job = new TimerRunnable(instant, closure, scheduler);
 
-            // job.put("procedure", closure);
-            // job.put("timer", timer);
-            if (timerExecutionJobs.containsKey(jobKey)) {
-                scheduler.remove(timerExecutionJobs.get(jobKey));
+            if (timerRunnables.containsKey(jobKey)) {
+                scheduler.remove(timerRunnables.get(jobKey));
                 logger.debug("Deleted existing Job {}", jobKey);
             }
-            // if (TimerImpl.scheduler.checkExists(job.getKey())) {
-            // TimerImpl.scheduler.deleteJob(job.getKey());
-            // logger.debug("Deleted existing Job {}", job.getKey().toString());
-            // }
-            timerExecutionJobs.put(jobKey, job);
+
+            timerRunnables.put(jobKey, job);
             scheduler.schedule(job, dateExpression);
             logger.debug("Scheduled code for execution at {}", instant.toString());
             return job;

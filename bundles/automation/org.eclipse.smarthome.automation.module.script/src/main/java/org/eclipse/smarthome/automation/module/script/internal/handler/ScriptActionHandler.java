@@ -42,7 +42,8 @@ public class ScriptActionHandler extends AbstractScriptModuleHandler<Action>impl
     }
 
     @Override
-    public void dispose() {}
+    public void dispose() {
+    }
 
     @Override
     public Map<String, Object> execute(Map<String, ?> context) {

@@ -1,0 +1,11 @@
+{  
+   "triggers":[  
+      {  
+         "uid":"SystemTrigger",
+         "label":"System Trigger",
+         "description":"Trigger to be manually pulled",
+         "outputs":[              
+         ]
+      },
+   ]
+}

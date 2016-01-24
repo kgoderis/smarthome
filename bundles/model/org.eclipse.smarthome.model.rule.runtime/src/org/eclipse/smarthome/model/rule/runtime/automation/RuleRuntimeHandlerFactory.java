@@ -1,4 +1,4 @@
-package org.eclipse.smarthome.model.script.engine.automation;
+package org.eclipse.smarthome.model.rule.runtime.automation;
 
 import java.util.ArrayList;
 import java.util.Collection;
@@ -23,25 +23,24 @@ import org.slf4j.LoggerFactory;
  *
  * @author Karel Goderis - Initial Contribution
  */
-public class ExecuteScriptHandlerFactory extends BaseModuleHandlerFactory {
+public class RuleRuntimeHandlerFactory extends BaseModuleHandlerFactory {
 
-    private Logger logger = LoggerFactory.getLogger(ExecuteScriptHandlerFactory.class);
+    private Logger logger = LoggerFactory.getLogger(RuleRuntimeHandlerFactory.class);
 
-    public static final String EXECUTE_SCRIPT_TRIGGER_TYPE_UID = "ExecuteScriptTrigger";
-    public static final String MODULE_HANDLER_FACTORY_NAME = "[ExecuteScriptHandlerFactory]";
-
+    public static final String SUPPORTED_TRIGGER = "SystemTrigger";
+    public static final String MODULE_HANDLER_FACTORY_NAME = "[RuleRuntimeHandlerFactory]";
     private static final Collection<String> types;
-    private Map<String, ExecuteScriptTriggerHandler> triggerHandlers = new HashMap<String, ExecuteScriptTriggerHandler>();
+    private Map<String, SystemTriggerHandler> triggerHandlers = new HashMap<String, SystemTriggerHandler>();
     private ServiceRegistration<?> factoryRegistration;
-    private ServiceRegistration<?> executeScriptFactoryRegistration;
+    private ServiceRegistration<?> ruleRuntimeFactoryRegistration;
 
     static {
         List<String> temp = new ArrayList<String>();
-        temp.add(EXECUTE_SCRIPT_TRIGGER_TYPE_UID);
+        temp.add(SUPPORTED_TRIGGER);
         types = Collections.unmodifiableCollection(temp);
     }
 
-    public ExecuteScriptHandlerFactory(BundleContext bc) throws InvalidSyntaxException {
+    public RuleRuntimeHandlerFactory(BundleContext bc) throws InvalidSyntaxException {
         super(bc);
     }
 
@@ -55,20 +54,20 @@ public class ExecuteScriptHandlerFactory extends BaseModuleHandlerFactory {
      *
      * @return list of created TriggerHandlers
      */
-    public Collection<ExecuteScriptTriggerHandler> getTriggerHandlers() {
+    public Collection<SystemTriggerHandler> getCreatedTriggerHandler() {
         return triggerHandlers.values();
     }
 
-    public ExecuteScriptTriggerHandler getTriggerHandler(String uid) {
+    public SystemTriggerHandler getTriggerHandler(String uid) {
         return triggerHandlers.get(uid);
     }
 
     @Override
     protected ModuleHandler internalCreate(Module module, String ruleUID) {
         ModuleHandler moduleHandler = null;
-        if (EXECUTE_SCRIPT_TRIGGER_TYPE_UID.equals(module.getTypeUID())) {
-            moduleHandler = new ExecuteScriptTriggerHandler((Trigger) module);
-            triggerHandlers.put(ruleUID + module.getId(), (ExecuteScriptTriggerHandler) moduleHandler);
+        if (SUPPORTED_TRIGGER.equals(module.getTypeUID())) {
+            moduleHandler = new SystemTriggerHandler((Trigger) module, ruleUID);
+            triggerHandlers.put(ruleUID + module.getId(), (SystemTriggerHandler) moduleHandler);
         } else {
             logger.error(MODULE_HANDLER_FACTORY_NAME + "Not supported moduleHandler: {}", module.getTypeUID());
         }
@@ -93,14 +92,15 @@ public class ExecuteScriptHandlerFactory extends BaseModuleHandlerFactory {
 
     public void register() {
         factoryRegistration = bundleContext.registerService(ModuleHandlerFactory.class.getName(), this, null);
-        executeScriptFactoryRegistration = bundleContext.registerService(ExecuteScriptHandlerFactory.class.getName(), this, null);
+        ruleRuntimeFactoryRegistration = bundleContext.registerService(RuleRuntimeHandlerFactory.class.getName(), this,
+                null);
     }
 
     public void unregister() {
         factoryRegistration.unregister();
         factoryRegistration = null;
-        executeScriptFactoryRegistration.unregister();
-        executeScriptFactoryRegistration = null;
+        ruleRuntimeFactoryRegistration.unregister();
+        ruleRuntimeFactoryRegistration = null;
     }
 
 }

@@ -7,7 +7,6 @@
  */
 package org.eclipse.smarthome.automation.module.script.internal.handler;
 
-import java.util.HashMap;
 import java.util.Map;
 import java.util.Map.Entry;
 
@@ -16,6 +15,7 @@ import javax.script.ScriptEngine;
 
 import org.eclipse.smarthome.automation.Module;
 import org.eclipse.smarthome.automation.handler.BaseModuleHandler;
+import org.eclipse.smarthome.automation.module.script.ModuleScriptContext;
 
 /**
  * This is an abstract class that can be used when implementing any module handler that handles scripts.
@@ -49,23 +49,30 @@ abstract public class AbstractScriptModuleHandler<T extends Module> extends Base
      */
     protected synchronized ScriptContext getExecutionContext(ScriptEngine engine, Map<String, ?> context) {
         if (executionContext == null) {
-            executionContext = engine.getContext();
+            executionContext = new ModuleScriptContext(engine.getContext());
         }
+
         // add the rule context to the script engine (only for this execution)
         for (Entry<String, ?> entry : context.entrySet()) {
 
-            final HashMap<String, Object> jsonObj = new HashMap<String, Object>();
-            Object value = entry.getValue();
-            String key = entry.getKey();
-            int dotIndex = key.indexOf('.');
-            if (dotIndex != -1) {
-                String jsonKey = key.substring(dotIndex + 1);
-                key = key.substring(0, dotIndex);
-                jsonObj.put(jsonKey, value);
-                executionContext.setAttribute(key, jsonObj, ScriptContext.ENGINE_SCOPE);
-            } else {
-                executionContext.setAttribute(key, value, ScriptContext.ENGINE_SCOPE);
-            }
+            // final HashMap<String, Object> jsonObj = new HashMap<String, Object>();
+            // Object value = entry.getValue();
+            // String key = entry.getKey();
+            // int dotIndex = key.indexOf('.');
+            // if (dotIndex != -1) {
+            // String jsonKey = key.substring(dotIndex + 1);
+            // key = key.substring(0, dotIndex);
+            // jsonObj.put(jsonKey, value);
+            // executionContext.setAttribute(key, jsonObj, ScriptContext.ENGINE_SCOPE);
+            // } else {
+
+            // TODO : discuss the logic behind separating the moduleID from the entryID (e.g output). If split,
+            // retrieval in the scripts afterwards is very difficult, especially when the moduleID is a UUID or
+            // generated ID that is not tracked by the party that will receive the context. Keeping moduleID.entryID as
+            // key will allow at a minimum to query the string for certain substrings
+
+            executionContext.setAttribute(entry.getKey(), entry.getValue(), ModuleScriptContext.MODULE_SCOPE);
+            // }
         }
         return executionContext;
     }
