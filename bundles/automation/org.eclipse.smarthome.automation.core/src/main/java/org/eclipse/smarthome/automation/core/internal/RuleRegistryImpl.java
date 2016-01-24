@@ -71,6 +71,22 @@ public class RuleRegistryImpl extends AbstractRegistry<Rule, String>implements R
     }
 
     @Override
+    protected void onAddElement(Rule rule) throws IllegalArgumentException {
+        try {
+            String rUID = rule.getUID();
+            if (!ruleEngine.hasRule(rUID)) {
+                if (rUID != null && disabledRulesStorage != null && disabledRulesStorage.get(rUID) != null) {
+                    ruleEngine.addRule(rule, false);
+                } else {
+                    ruleEngine.addRule(rule, true);
+                }
+            }
+        } catch (Exception e) {
+            logger.error("Can't add rule: " + rule.getUID() + " into rule engine ", e);
+        }
+    }
+
+    @Override
     protected synchronized void removeProvider(Provider<Rule> provider) {
         Collection<Rule> rules = provider.getAll();
         for (Iterator<Rule> it = rules.iterator(); it.hasNext();) {
@@ -156,12 +172,13 @@ public class RuleRegistryImpl extends AbstractRegistry<Rule, String>implements R
     @Override
     public synchronized void setEnabled(String uid, boolean isEnabled) {
         ruleEngine.setRuleEnabled(uid, isEnabled);
-        if (disabledRulesStorage != null)
+        if (disabledRulesStorage != null) {
             if (isEnabled) {
                 disabledRulesStorage.remove(uid);
             } else {
                 disabledRulesStorage.put(uid, isEnabled);
             }
+        }
     }
 
     @Override
@@ -204,5 +221,6 @@ public class RuleRegistryImpl extends AbstractRegistry<Rule, String>implements R
         return ruleEngine.hasRule(ruleUID) ? !ruleEngine.getRuleStatus(ruleUID).equals(RuleStatus.DISABLED) : null;
     }
 
-    public void dispose() {}
+    public void dispose() {
+    }
 }
