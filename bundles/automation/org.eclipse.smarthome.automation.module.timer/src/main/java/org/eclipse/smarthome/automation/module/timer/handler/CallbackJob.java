@@ -20,7 +20,7 @@ import com.google.common.collect.Maps;
 
 /**
  * This is an Job implementation which encapsulates a {@code RuleEngineCallback} in order to trigger a {@code Trigger}.
- * {@see TimerTriggerHandler}
+ * {@see CronTriggerHandler}
  *
  * @author Christoph Knauf - Initial Contribution
  * @author Karel Goderis - Migration to ThreadPoolManager based scheduler
@@ -28,7 +28,7 @@ import com.google.common.collect.Maps;
  */
 public class CallbackJob extends ContextRunnable {
 
-    private final Logger logger = LoggerFactory.getLogger(TimerTriggerHandler.class);
+    private final Logger logger = LoggerFactory.getLogger(CronTriggerHandler.class);
 
     @Override
     public void run() {

@@ -14,8 +14,9 @@ import org.eclipse.smarthome.automation.Module;
 import org.eclipse.smarthome.automation.Trigger;
 import org.eclipse.smarthome.automation.handler.BaseModuleHandlerFactory;
 import org.eclipse.smarthome.automation.handler.ModuleHandler;
+import org.eclipse.smarthome.automation.module.timer.handler.CronTriggerHandler;
+import org.eclipse.smarthome.automation.module.timer.handler.DateTriggerHandler;
 import org.eclipse.smarthome.automation.module.timer.handler.RecurrenceTriggerHandler;
-import org.eclipse.smarthome.automation.module.timer.handler.TimerTriggerHandler;
 import org.osgi.framework.BundleContext;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -25,6 +26,7 @@ import org.slf4j.LoggerFactory;
  * RuleEngine.
  *
  * @author Christoph Knauf - initial contribution
+ * @author Karel Goderis - added Recurrence and Date TriggerHandlers
  *
  */
 public class TimerModuleHandlerFactory extends BaseModuleHandlerFactory {
@@ -32,7 +34,7 @@ public class TimerModuleHandlerFactory extends BaseModuleHandlerFactory {
     private Logger logger = LoggerFactory.getLogger(TimerModuleHandlerFactory.class);
 
     private static final Collection<String> types = Arrays
-            .asList(new String[] { TimerTriggerHandler.MODULE_TYPE_ID, RecurrenceTriggerHandler.MODULE_TYPE_ID });
+            .asList(new String[] { CronTriggerHandler.MODULE_TYPE_ID, RecurrenceTriggerHandler.MODULE_TYPE_ID });
 
     public static final String CALLBACK_CONTEXT_NAME = "CALLBACK";
     public static final String MODULE_CONTEXT_NAME = "MODULE";
@@ -52,11 +54,11 @@ public class TimerModuleHandlerFactory extends BaseModuleHandlerFactory {
         ModuleHandler handler = handlers.get(ruleUID + module.getId());
         String moduleTypeUID = module.getTypeUID();
 
-        if (TimerTriggerHandler.MODULE_TYPE_ID.equals(moduleTypeUID) && module instanceof Trigger) {
-            TimerTriggerHandler timerTriggerHandler = handler != null && handler instanceof TimerTriggerHandler
-                    ? (TimerTriggerHandler) handler : null;
+        if (CronTriggerHandler.MODULE_TYPE_ID.equals(moduleTypeUID) && module instanceof Trigger) {
+            CronTriggerHandler timerTriggerHandler = handler != null && handler instanceof CronTriggerHandler
+                    ? (CronTriggerHandler) handler : null;
             if (timerTriggerHandler == null) {
-                timerTriggerHandler = new TimerTriggerHandler((Trigger) module);
+                timerTriggerHandler = new CronTriggerHandler((Trigger) module);
                 handlers.put(ruleUID + module.getId(), timerTriggerHandler);
                 return timerTriggerHandler;
             }
@@ -67,6 +69,14 @@ public class TimerModuleHandlerFactory extends BaseModuleHandlerFactory {
                 recurrenceTriggerHandler = new RecurrenceTriggerHandler((Trigger) module);
                 handlers.put(ruleUID + module.getId(), recurrenceTriggerHandler);
                 return recurrenceTriggerHandler;
+            }
+        } else if (DateTriggerHandler.MODULE_TYPE_ID.equals(moduleTypeUID) && module instanceof Trigger) {
+            DateTriggerHandler dateTriggerHandler = handler != null && handler instanceof DateTriggerHandler
+                    ? (DateTriggerHandler) handler : null;
+            if (dateTriggerHandler == null) {
+                dateTriggerHandler = new DateTriggerHandler((Trigger) module);
+                handlers.put(ruleUID + module.getId(), dateTriggerHandler);
+                return dateTriggerHandler;
             }
         } else {
             logger.error("The ModuleHandler is not supported:" + moduleTypeUID);

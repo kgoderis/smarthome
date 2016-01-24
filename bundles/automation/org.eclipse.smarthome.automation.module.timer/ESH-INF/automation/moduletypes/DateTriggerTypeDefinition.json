@@ -1,0 +1,18 @@
+{  
+   "triggers":[  
+      {  
+         "uid":"DateTrigger",
+         "label":"Date Trigger",
+         "description":"This triggers a rule based on a ISO8601 date expression",
+         "configDescriptions":[  
+            {  
+               "name":"dateExpression",
+               "type":"TEXT",
+               "label":"date expression",
+               "description":"the date expression in ISO8601 format",
+               "required":true
+            }
+         ]
+      }
+   ]
+}

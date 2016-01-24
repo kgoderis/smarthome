@@ -29,18 +29,18 @@ import org.slf4j.LoggerFactory;
  * @author Karel Goderis - Migration to ThreadPoolManager based scheduler
  *
  */
-public class TimerTriggerHandler extends BaseModuleHandler<Trigger>implements TriggerHandler {
+public class CronTriggerHandler extends BaseModuleHandler<Trigger>implements TriggerHandler {
 
-    private final Logger logger = LoggerFactory.getLogger(TimerTriggerHandler.class);
+    private final Logger logger = LoggerFactory.getLogger(CronTriggerHandler.class);
 
     private RuleEngineCallback callback;
     private CallbackJob job;
     private CronExpression cronExpression;
 
-    public static final String MODULE_TYPE_ID = "TimerTrigger";
+    public static final String MODULE_TYPE_ID = "CronTrigger";
     private static final String CFG_CRON_EXPRESSION = "cronExpression";
 
-    public TimerTriggerHandler(Trigger module) {
+    public CronTriggerHandler(Trigger module) {
         super(module);
         String cronExpression = (String) module.getConfiguration().get(CFG_CRON_EXPRESSION);
         try {

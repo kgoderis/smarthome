@@ -17,7 +17,7 @@ import org.slf4j.LoggerFactory;
 
 /**
  * Activator class for trigger based automation modules
- * 
+ *
  * @author Christoph Knauf - initial contribution
  *
  */
@@ -35,10 +35,11 @@ public class Activator implements BundleActivator {
 
     /*
      * (non-Javadoc)
-     * 
+     *
      * @see org.osgi.framework.BundleActivator#start(org.osgi.framework.
      * BundleContext)
      */
+    @Override
     public void start(BundleContext bundleContext) throws Exception {
         this.context = bundleContext;
         this.moduleHandlerFactory = new TimerModuleHandlerFactory(context);
@@ -49,10 +50,11 @@ public class Activator implements BundleActivator {
 
     /*
      * (non-Javadoc)
-     * 
+     *
      * @see
      * org.osgi.framework.BundleActivator#stop(org.osgi.framework.BundleContext)
      */
+    @Override
     public void stop(BundleContext bundleContext) throws Exception {
         this.context = null;
         this.moduleHandlerFactory.dispose();
