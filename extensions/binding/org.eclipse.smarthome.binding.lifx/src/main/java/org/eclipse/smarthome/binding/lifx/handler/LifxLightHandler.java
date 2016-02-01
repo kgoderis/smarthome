@@ -718,11 +718,11 @@ public class LifxLightHandler extends BaseThingHandler {
         currentTempState = temperature;
 
         if (currentPowerState == PowerState.OFF) {
-            updateState(CHANNEL_COLOR, OnOffType.OFF);
+            updateState(CHANNEL_COLOR, new HSBType(hue, saturation, PercentType.ZERO));
         } else if (currentColorState != null) {
             updateState(CHANNEL_COLOR, currentColorState);
         } else {
-            updateState(CHANNEL_COLOR, OnOffType.ON);
+            updateState(CHANNEL_COLOR, new HSBType(hue, saturation, PercentType.HUNDRED));
         }
 
         updateState(CHANNEL_TEMPERATURE, temperature);
@@ -734,11 +734,13 @@ public class LifxLightHandler extends BaseThingHandler {
         currentPowerState = packet.getState();
 
         if (packet.getState() == PowerState.OFF) {
-            updateState(CHANNEL_COLOR, OnOffType.OFF);
+            updateState(CHANNEL_COLOR,
+                    new HSBType(currentColorState.getHue(), currentColorState.getSaturation(), PercentType.ZERO));
         } else if (currentColorState != null) {
             updateState(CHANNEL_COLOR, currentColorState);
         } else {
-            updateState(CHANNEL_COLOR, OnOffType.ON);
+            updateState(CHANNEL_COLOR,
+                    new HSBType(currentColorState.getHue(), currentColorState.getSaturation(), PercentType.HUNDRED));
         }
 
         updateStatus(ThingStatus.ONLINE);
