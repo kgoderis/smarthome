@@ -29,7 +29,7 @@
     </channel-type>
     
     <channel-type id="temperature">
-        <item-type>Number</item-type>
+        <item-type>Dimmer</item-type>
         <label>Temperature</label>
         <description>Sets the temperature of the light</description>
         <category>Temperature</category>
