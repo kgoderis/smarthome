@@ -79,10 +79,12 @@ public class LifxLightDiscovery extends AbstractDiscoveryService {
     private long source;
 
     private ScheduledFuture<?> discoveryJob;
+
     private ScheduledFuture<?> networkJob;
 
     public LifxLightDiscovery() throws IllegalArgumentException {
-        super(Sets.newHashSet(LifxBindingConstants.THING_TYPE_LIGHT), 1, true);
+        super(Sets.newHashSet(LifxBindingConstants.THING_TYPE_COLORLIGHT, LifxBindingConstants.THING_TYPE_WHITELIGHT),
+                1, true);
     }
 
     @Override
@@ -98,27 +100,30 @@ public class LifxLightDiscovery extends AbstractDiscoveryService {
         } catch (SocketException e) {
             logger.debug("An exception occurred while discovering LIFX lights : '{}", e.getMessage());
         }
-        while (networkInterfaces.hasMoreElements()) {
-            NetworkInterface iface = networkInterfaces.nextElement();
-            try {
-                if (iface.isUp() && !iface.isLoopback()) {
-                    for (InterfaceAddress ifaceAddr : iface.getInterfaceAddresses()) {
-                        if (ifaceAddr.getAddress() instanceof Inet4Address) {
-                            logger.debug("Adding '{}' as interface address with MTU {}", ifaceAddr.getAddress(),
-                                    iface.getMTU());
-                            if (iface.getMTU() > bufferSize) {
-                                bufferSize = iface.getMTU();
-                            }
-                            interfaceAddresses.add(ifaceAddr.getAddress());
-                            if (ifaceAddr.getBroadcast() != null) {
-                                logger.debug("Adding '{}' as broadcast address", ifaceAddr.getBroadcast());
-                                broadcastAddresses.add(new InetSocketAddress(ifaceAddr.getBroadcast(), BROADCAST_PORT));
+        if (networkInterfaces != null) {
+            while (networkInterfaces.hasMoreElements()) {
+                NetworkInterface iface = networkInterfaces.nextElement();
+                try {
+                    if (iface.isUp() && !iface.isLoopback()) {
+                        for (InterfaceAddress ifaceAddr : iface.getInterfaceAddresses()) {
+                            if (ifaceAddr.getAddress() instanceof Inet4Address) {
+                                logger.debug("Adding '{}' as interface address with MTU {}", ifaceAddr.getAddress(),
+                                        iface.getMTU());
+                                if (iface.getMTU() > bufferSize) {
+                                    bufferSize = iface.getMTU();
+                                }
+                                interfaceAddresses.add(ifaceAddr.getAddress());
+                                if (ifaceAddr.getBroadcast() != null) {
+                                    logger.debug("Adding '{}' as broadcast address", ifaceAddr.getBroadcast());
+                                    broadcastAddresses
+                                            .add(new InetSocketAddress(ifaceAddr.getBroadcast(), BROADCAST_PORT));
+                                }
                             }
                         }
                     }
+                } catch (SocketException e) {
+                    logger.debug("An exception occurred while discovering LIFX lights : '{}", e.getMessage());
                 }
-            } catch (SocketException e) {
-                logger.debug("An exception occurred while discovering LIFX lights : '{}", e.getMessage());
             }
         }
     }
@@ -150,6 +155,10 @@ public class LifxLightDiscovery extends AbstractDiscoveryService {
         if (discoveryJob != null && !discoveryJob.isCancelled()) {
             discoveryJob.cancel(true);
             discoveryJob = null;
+        }
+        if (networkJob != null && !networkJob.isCancelled()) {
+            networkJob.cancel(true);
+            networkJob = null;
         }
     }
 
@@ -242,14 +251,14 @@ public class LifxLightDiscovery extends AbstractDiscoveryService {
                         SelectableChannel channel = key.channel();
                         try {
                             if (channel instanceof DatagramChannel) {
-                                logger.debug(
+                                logger.trace(
                                         "Discovery : Sending packet type '{}' from '{}' to '{}' for '{}' with sequence '{}' and source '{}'",
                                         new Object[] { packet.getClass().getSimpleName(),
                                                 ((InetSocketAddress) ((DatagramChannel) channel).getLocalAddress())
                                                         .toString(),
                                                 address.toString(), packet.getTarget().getHex(), packet.getSequence(),
                                                 Long.toString(packet.getSource(), 16) });
-                                int number = ((DatagramChannel) channel).send(packet.bytes(), address);
+                                ((DatagramChannel) channel).send(packet.bytes(), address);
 
                                 sent = true;
                                 result = true;
@@ -278,13 +287,13 @@ public class LifxLightDiscovery extends AbstractDiscoveryService {
 
                 long startStamp = System.currentTimeMillis();
 
-                logger.debug("Entering read loop at {}", startStamp);
+                logger.trace("Entering read loop at {}", startStamp);
 
                 while (System.currentTimeMillis() - startStamp < SELECTOR_TIMEOUT) {
 
                     connectionsToSetUp = new ArrayList<ConnectionSetupParameter>();
 
-                    if (selector != null) {
+                    if (selector != null && selector.isOpen()) {
                         try {
                             selector.selectNow();
                         } catch (IOException e) {
@@ -325,46 +334,46 @@ public class LifxLightDiscovery extends AbstractDiscoveryService {
                                     logger.warn("An exception occurred while reading data : '{}'", e.getMessage());
                                 }
 
-                                logger.debug("Receiving data from {}", address.getAddress().toString());
+                                if (address != null) {
+                                    logger.trace("Receiving data from {}", address.getAddress().toString());
+                                    if (!interfaceAddresses.contains(address.getAddress())) {
 
-                                if (!interfaceAddresses.contains(address.getAddress())) {
+                                        readBuffer.rewind();
 
-                                    readBuffer.rewind();
+                                        ByteBuffer packetSize = readBuffer.slice();
+                                        packetSize.position(0);
+                                        packetSize.limit(2);
+                                        int size = Packet.FIELD_SIZE.value(packetSize);
 
-                                    ByteBuffer packetSize = readBuffer.slice();
-                                    packetSize.position(0);
-                                    packetSize.limit(2);
-                                    int size = Packet.FIELD_SIZE.value(packetSize);
+                                        if (messageLength == size) {
 
-                                    if (messageLength == size) {
+                                            ByteBuffer packetType = readBuffer.slice();
+                                            packetType.position(32);
+                                            packetType.limit(34);
+                                            int type = Packet.FIELD_PACKET_TYPE.value(packetType);
 
-                                        ByteBuffer packetType = readBuffer.slice();
-                                        packetType.position(32);
-                                        packetType.limit(34);
-                                        int type = Packet.FIELD_PACKET_TYPE.value(packetType);
+                                            PacketHandler<?> handler = PacketFactory.createHandler(type);
 
-                                        PacketHandler handler = PacketFactory.createHandler(type);
+                                            if (handler == null) {
+                                                logger.trace("Unknown packet type: {} (source: {})",
+                                                        String.format("0x%02X", type), address.toString());
+                                                continue;
+                                            }
 
-                                        if (handler == null) {
-                                            logger.trace("Unknown packet type: {} (source: {})",
-                                                    String.format("0x%02X", type), address.toString());
-                                            continue;
-                                        }
-
-                                        Packet packet = handler.handle(readBuffer);
-                                        if (packet == null) {
-                                            logger.warn("Handler {} was unable to handle packet",
-                                                    handler.getClass().getName());
-                                        } else {
-                                            handlePacket(packet, address);
+                                            Packet packet = handler.handle(readBuffer);
+                                            if (packet == null) {
+                                                logger.warn("Handler {} was unable to handle packet",
+                                                        handler.getClass().getName());
+                                            } else {
+                                                handlePacket(packet, address);
+                                            }
                                         }
                                     }
+                                } else if (key.isValid() && key.isWritable()) {
+                                    // a channel is ready for writing
+                                    // block of code only for completeness purposes
                                 }
-                            } else if (key.isValid() && key.isWritable()) {
-                                // a channel is ready for writing
-                                // block of code only for completeness purposes
                             }
-
                         }
 
                         // Iterate through the channels that have to be set up, and the packets that have to be sent
@@ -390,15 +399,14 @@ public class LifxLightDiscovery extends AbstractDiscoveryService {
                     }
                 }
             } catch (Exception e) {
-                logger.error("An exception orccurred while communicating with the bulb : '{}'", e.getMessage());
-                e.printStackTrace();
+                logger.error("An exception orccurred while communicating with the bulb : '{}'", e.getMessage(), e);
             }
         }
     };
 
     private void handlePacket(Packet packet, InetSocketAddress address) {
 
-        logger.debug("Discovery : Packet type '{}' received from '{}' for '{}' with sequence '{}' and source '{}'",
+        logger.trace("Discovery : Packet type '{}' received from '{}' for '{}' with sequence '{}' and source '{}'",
                 new Object[] { packet.getClass().getSimpleName(), address.toString(), packet.getTarget().getHex(),
                         packet.getSequence(), Long.toString(packet.getSource(), 16) });
 
@@ -427,7 +435,9 @@ public class LifxLightDiscovery extends AbstractDiscoveryService {
                 if (serviceResponse != null) {
                     DiscoveryResult discoveryResult = createDiscoveryResult(serviceResponse,
                             (StateVersionResponse) packet);
-                    thingDiscovered(discoveryResult);
+                    if (discoveryResult != null) {
+                        thingDiscovered(discoveryResult);
+                    }
                 }
             }
 
@@ -437,25 +447,33 @@ public class LifxLightDiscovery extends AbstractDiscoveryService {
     private DiscoveryResult createDiscoveryResult(StateServiceResponse packet, StateVersionResponse returnedPacket) {
 
         MACAddress discoveredAddress = packet.getTarget();
-        ThingUID thingUID = getUID(discoveredAddress.getAsLabel());
-        Products product = Products.getProductFromProductID(returnedPacket.getProduct());
+        try {
+            Products product = Products.getProductFromProductID(returnedPacket.getProduct());
+            ThingUID thingUID = getUID(discoveredAddress.getAsLabel(), product.isColor());
 
-        String label = "";
+            String label = "";
 
-        if (StringUtils.isBlank(label)) {
-            label = product.getName();
+            if (StringUtils.isBlank(label)) {
+                label = product.getName();
+            }
+
+            logger.trace("Discovered a LIFX light : {}", label);
+
+            return DiscoveryResultBuilder.create(thingUID).withLabel(label)
+                    .withProperty(LifxBindingConstants.CONFIG_PROPERTY_DEVICE_ID, discoveredAddress.getAsLabel())
+                    .withRepresentationProperty(discoveredAddress.getAsLabel()).build();
+        } catch (IllegalArgumentException e) {
+            logger.trace("Ignoring packet: {}", e);
+            return null;
         }
-
-        logger.debug("Discovered a LIFX light : {}", label);
-
-        return DiscoveryResultBuilder.create(thingUID).withLabel(label)
-                .withProperty(LifxBindingConstants.CONFIG_PROPERTY_DEVICE_ID, discoveredAddress.getAsLabel())
-                .withRepresentationProperty(discoveredAddress.getAsLabel()).build();
     }
 
-    private ThingUID getUID(String hex) {
-        ThingUID thingUID = new ThingUID(LifxBindingConstants.THING_TYPE_LIGHT, hex);
-        return thingUID;
+    private ThingUID getUID(String hex, boolean color) {
+        if (color) {
+            return new ThingUID(LifxBindingConstants.THING_TYPE_COLORLIGHT, hex);
+        } else {
+            return new ThingUID(LifxBindingConstants.THING_TYPE_WHITELIGHT, hex);
+        }
     }
 
     private class ConnectionSetupParameter {

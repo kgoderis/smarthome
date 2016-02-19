@@ -95,7 +95,7 @@ public class LifxLightHandler extends BaseThingHandler {
     private int sequenceNumber = 1;
     private PowerState currentPowerState;
     private HSBType currentColorState;
-    private DecimalType currentTempState;
+    private PercentType currentTempState;
 
     private Selector selector;
     private ScheduledFuture<?> networkJob;
@@ -204,8 +204,6 @@ public class LifxLightHandler extends BaseThingHandler {
             lighCounterLock.unlock();
             broadcastKey = broadcastChannel.register(selector, SelectionKey.OP_READ | SelectionKey.OP_WRITE);
 
-            updateStatus(ThingStatus.OFFLINE, ThingStatusDetail.CONFIGURATION_PENDING);
-
             // look for lights on the network
             GetServiceRequest packet = new GetServiceRequest();
             broadcastPacket(packet);
@@ -218,16 +216,15 @@ public class LifxLightHandler extends BaseThingHandler {
     @Override
     public void handleCommand(ChannelUID channelUID, Command command) {
 
-        if (getThing().getStatusInfo().getStatus() != ThingStatus.ONLINE) {
-            logger.warn("Cannot handle command: No connection to LIFX network.");
-            return;
-        }
         try {
             switch (channelUID.getId()) {
                 case CHANNEL_COLOR:
                     if (command instanceof HSBType) {
                         handleHSBCommand((HSBType) command);
-                    } else if (command instanceof PercentType) {
+                        return;
+                    }
+                case CHANNEL_BRIGHTNESS:
+                    if (command instanceof PercentType) {
                         handlePercentCommand((PercentType) command);
                     } else if (command instanceof OnOffType) {
                         handleOnOffCommand((OnOffType) command);
@@ -236,8 +233,8 @@ public class LifxLightHandler extends BaseThingHandler {
                     }
                     break;
                 case CHANNEL_TEMPERATURE:
-                    if (command instanceof DecimalType) {
-                        handleTemperatureCommand((DecimalType) command);
+                    if (command instanceof PercentType) {
+                        handleTemperatureCommand((PercentType) command);
                     } else if (command instanceof IncreaseDecreaseType) {
                         handleIncreaseDecreaseTemperatureCommand((IncreaseDecreaseType) command);
                     }
@@ -246,19 +243,20 @@ public class LifxLightHandler extends BaseThingHandler {
                     break;
             }
         } catch (Exception ex) {
-            logger.error("Error while updating bulb.", ex);
+            logger.error("Error while updating bulb: {}", ex.getMessage(), ex);
         }
     }
 
-    private void handleTemperatureCommand(DecimalType temperature) {
+    private void handleTemperatureCommand(PercentType temperature) {
         SetColorRequest packet = new SetColorRequest((int) (currentColorState.getHue().floatValue() / 360 * 65535.0f),
                 (int) (currentColorState.getSaturation().floatValue() / 100 * 65535.0f),
-                (int) (currentColorState.getBrightness().floatValue() / 100 * 65535.0f), temperature.intValue(), 0);
+                (int) (currentColorState.getBrightness().floatValue() / 100 * 65535.0f),
+                toKelvin(temperature.intValue()), 0);
         packet.setResponseRequired(false);
         sendPacket(packet);
 
         // the LIFX LAN protocol spec indicates that the response returned for a request would be the
-        // previous value, so we explicitely demand for the latest value
+        // previous value, so we explicitly demand for the latest value
         GetRequest colorPacket = new GetRequest();
         sendPacket(colorPacket);
     }
@@ -266,7 +264,8 @@ public class LifxLightHandler extends BaseThingHandler {
     private void handleHSBCommand(HSBType hsbType) {
         SetColorRequest packet = new SetColorRequest((int) (hsbType.getHue().floatValue() / 360 * 65535.0f),
                 (int) (hsbType.getSaturation().floatValue() / 100 * 65535.0f),
-                (int) (hsbType.getBrightness().floatValue() / 100 * 65535.0f), currentTempState.intValue(), 0);
+                (int) (hsbType.getBrightness().floatValue() / 100 * 65535.0f), toKelvin(currentTempState.intValue()),
+                0);
         packet.setResponseRequired(false);
         sendPacket(packet);
 
@@ -345,7 +344,7 @@ public class LifxLightHandler extends BaseThingHandler {
                 }
             }
 
-            DecimalType newTemperature = new DecimalType(Math.round(temperature * 100));
+            PercentType newTemperature = new PercentType(Math.round(temperature * 100));
             handleTemperatureCommand(newTemperature);
         }
     }
@@ -396,37 +395,38 @@ public class LifxLightHandler extends BaseThingHandler {
                             } catch (Exception e) {
                                 logger.warn("An exception occurred while reading data : '{}'", e.getMessage());
                             }
+                            if (address != null) {
+                                if (!interfaceAddresses.contains(address.getAddress())) {
 
-                            if (!interfaceAddresses.contains(address.getAddress())) {
+                                    readBuffer.rewind();
 
-                                readBuffer.rewind();
+                                    ByteBuffer packetSize = readBuffer.slice();
+                                    packetSize.position(0);
+                                    packetSize.limit(2);
+                                    int size = Packet.FIELD_SIZE.value(packetSize);
 
-                                ByteBuffer packetSize = readBuffer.slice();
-                                packetSize.position(0);
-                                packetSize.limit(2);
-                                int size = Packet.FIELD_SIZE.value(packetSize);
+                                    if (messageLength == size) {
 
-                                if (messageLength == size) {
+                                        ByteBuffer packetType = readBuffer.slice();
+                                        packetType.position(32);
+                                        packetType.limit(34);
+                                        int type = Packet.FIELD_PACKET_TYPE.value(packetType);
 
-                                    ByteBuffer packetType = readBuffer.slice();
-                                    packetType.position(32);
-                                    packetType.limit(34);
-                                    int type = Packet.FIELD_PACKET_TYPE.value(packetType);
+                                        PacketHandler<?> handler = PacketFactory.createHandler(type);
 
-                                    PacketHandler handler = PacketFactory.createHandler(type);
+                                        if (handler == null) {
+                                            logger.trace("Unknown packet type: {} (source: {})",
+                                                    String.format("0x%02X", type), address.toString());
+                                            continue;
+                                        }
 
-                                    if (handler == null) {
-                                        logger.trace("Unknown packet type: {} (source: {})",
-                                                String.format("0x%02X", type), address.toString());
-                                        continue;
-                                    }
-
-                                    Packet packet = handler.handle(readBuffer);
-                                    if (packet == null) {
-                                        logger.warn("Handler {} was unable to handle packet",
-                                                handler.getClass().getName());
-                                    } else {
-                                        handlePacket(packet, address);
+                                        Packet packet = handler.handle(readBuffer);
+                                        if (packet == null) {
+                                            logger.warn("Handler {} was unable to handle packet",
+                                                    handler.getClass().getName());
+                                        } else {
+                                            handlePacket(packet, address);
+                                        }
                                     }
                                 }
                             }
@@ -537,6 +537,12 @@ public class LifxLightHandler extends BaseThingHandler {
                 LifxNetworkThrottler.lock();
                 result = sendPacket(packet, address, broadcastKey);
                 LifxNetworkThrottler.unlock();
+                if (!result) {
+                    try {
+                        Thread.sleep(NETWORK_INTERVAL);
+                    } catch (InterruptedException e) {
+                    }
+                }
             }
         }
 
@@ -555,7 +561,7 @@ public class LifxLightHandler extends BaseThingHandler {
 
             boolean sent = false;
 
-            while (!sent) {
+            while (!sent && selector.isOpen()) {
                 try {
                     selector.selectNow();
                 } catch (IOException e) {
@@ -572,14 +578,14 @@ public class LifxLightHandler extends BaseThingHandler {
                         SelectableChannel channel = key.channel();
                         try {
                             if (channel instanceof DatagramChannel) {
-                                logger.debug(
+                                logger.trace(
                                         "{} : Sending packet type '{}' from '{}' to '{}' for '{}' with sequence '{}' and source '{}'",
                                         new Object[] { macAddress.getHex(), packet.getClass().getSimpleName(),
                                                 ((InetSocketAddress) ((DatagramChannel) channel).getLocalAddress())
                                                         .toString(),
                                                 address.toString(), packet.getTarget().getHex(), packet.getSequence(),
                                                 Long.toString(packet.getSource(), 16) });
-                                int number = ((DatagramChannel) channel).send(packet.bytes(), address);
+                                ((DatagramChannel) channel).send(packet.bytes(), address);
                                 if (packet.getResponseRequired()) {
                                     sentPackets.put(packet.getSequence(), packet);
                                 }
@@ -608,7 +614,7 @@ public class LifxLightHandler extends BaseThingHandler {
         if ((packet.getTarget().equals(macAddress) || packet.getTarget().equals(broadcastAddress))
                 && (packet.getSource() == source || packet.getSource() == 0)) {
 
-            logger.debug("{} : Packet type '{}' received from '{}' for '{}' with sequence '{}' and source '{}'",
+            logger.trace("{} : Packet type '{}' received from '{}' for '{}' with sequence '{}' and source '{}'",
                     new Object[] { macAddress.getHex(), packet.getClass().getSimpleName(), address.toString(),
                             packet.getTarget().getHex(), packet.getSequence(), Long.toString(packet.getSource(), 16) });
 
@@ -708,11 +714,21 @@ public class LifxLightHandler extends BaseThingHandler {
         }
     }
 
+    private int toKelvin(int temperature) {
+        // range is from 2500-9000K
+        return 9000 - (temperature * 65 + 2500);
+    }
+
+    private int toPercent(int kelvin) {
+        // range is from 2500-9000K
+        return 100 - ((kelvin - 2500) / 65);
+    }
+
     public void handleLightStatus(StateResponse packet) {
         DecimalType hue = new DecimalType(packet.getHue() * 360 / 65535.0f);
         PercentType saturation = new PercentType(Math.round((packet.getSaturation() / 65535.0f) * 100));
         PercentType brightness = new PercentType(Math.round((packet.getBrightness() / 65535.0f) * 100));
-        DecimalType temperature = new DecimalType(packet.getKelvin());
+        PercentType temperature = new PercentType(toPercent(packet.getKelvin()));
 
         currentColorState = new HSBType(hue, saturation, brightness);
         currentPowerState = packet.getPower();
@@ -720,10 +736,13 @@ public class LifxLightHandler extends BaseThingHandler {
 
         if (currentPowerState == PowerState.OFF) {
             updateState(CHANNEL_COLOR, new HSBType(hue, saturation, PercentType.ZERO));
+            updateState(CHANNEL_BRIGHTNESS, PercentType.ZERO);
         } else if (currentColorState != null) {
             updateState(CHANNEL_COLOR, currentColorState);
+            updateState(CHANNEL_BRIGHTNESS, currentColorState.getBrightness());
         } else {
             updateState(CHANNEL_COLOR, new HSBType(hue, saturation, PercentType.HUNDRED));
+            updateState(CHANNEL_BRIGHTNESS, PercentType.HUNDRED);
         }
 
         updateState(CHANNEL_TEMPERATURE, temperature);
@@ -737,11 +756,14 @@ public class LifxLightHandler extends BaseThingHandler {
         if (packet.getState() == PowerState.OFF) {
             updateState(CHANNEL_COLOR,
                     new HSBType(currentColorState.getHue(), currentColorState.getSaturation(), PercentType.ZERO));
+            updateState(CHANNEL_BRIGHTNESS, PercentType.ZERO);
         } else if (currentColorState != null) {
             updateState(CHANNEL_COLOR, currentColorState);
+            updateState(CHANNEL_BRIGHTNESS, currentColorState.getBrightness());
         } else {
             updateState(CHANNEL_COLOR,
                     new HSBType(currentColorState.getHue(), currentColorState.getSaturation(), PercentType.HUNDRED));
+            updateState(CHANNEL_BRIGHTNESS, PercentType.HUNDRED);
         }
 
         updateStatus(ThingStatus.ONLINE);

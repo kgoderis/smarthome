@@ -27,15 +27,15 @@ public class StateMeshFirmwareResponse extends Packet {
     public static final Field<Integer> FIELD_BUILD_MINUTE = new UInt8Field();
     public static final Field<Integer> FIELD_BUILD_HOUR = new UInt8Field();
     public static final Field<Integer> FIELD_BUILD_DAY = new UInt8Field();
-    public static final Field<String> FIELD_BUILD_MONTH = new LittleField(new StringField(3));
+    public static final Field<String> FIELD_BUILD_MONTH = new LittleField<>(new StringField(3));
     public static final Field<Integer> FIELD_BUILD_YEAR = new UInt8Field();
     public static final Field<Integer> FIELD_INSTALL_SECOND = new UInt8Field();
     public static final Field<Integer> FIELD_INSTALL_MINUTE = new UInt8Field();
     public static final Field<Integer> FIELD_INSTALL_HOUR = new UInt8Field();
     public static final Field<Integer> FIELD_INSTALL_DAY = new UInt8Field();
-    public static final Field<String> FIELD_INSTALL_MONTH = new LittleField(new StringField(3));
+    public static final Field<String> FIELD_INSTALL_MONTH = new LittleField<>(new StringField(3));
     public static final Field<Integer> FIELD_INSTALL_YEAR = new UInt8Field();
-    public static final Field<Long> FIELD_VERSION = new LittleField(new UInt32Field());
+    public static final Field<Long> FIELD_VERSION = new LittleField<>(new UInt32Field());
 
     private int buildSecond;
     private int buildMinute;

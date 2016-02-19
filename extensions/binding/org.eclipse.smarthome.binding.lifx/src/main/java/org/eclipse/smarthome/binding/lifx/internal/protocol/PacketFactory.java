@@ -31,7 +31,7 @@ public class PacketFactory {
         return instance;
     }
 
-    private final Map<Integer, PacketHandler> handlers;
+    private final Map<Integer, PacketHandler<?>> handlers;
 
     private PacketFactory() {
         handlers = new HashMap<>();
@@ -86,7 +86,7 @@ public class PacketFactory {
      * @param type the type to register
      * @param handler the packet handler to associate with the type
      */
-    public final void register(int type, PacketHandler handler) {
+    public final void register(int type, PacketHandler<?> handler) {
         handlers.put(type, handler);
     }
 
@@ -101,7 +101,7 @@ public class PacketFactory {
      * @param clazz the class of the packet to register
      */
     public final void register(int type, Class<? extends Packet> clazz) {
-        handlers.put(type, new GenericHandler(clazz));
+        handlers.put(type, new GenericHandler<>(clazz));
     }
 
     /**
@@ -114,7 +114,7 @@ public class PacketFactory {
      * @param clazz the packet class to register
      */
     public final <T extends Packet> void register(Class<T> clazz) {
-        GenericHandler<T> handler = new GenericHandler(clazz);
+        GenericHandler<T> handler = new GenericHandler<>(clazz);
 
         if (!handler.isTypeFound()) {
             throw new IllegalArgumentException("Unable to register generic packet with no TYPE field.");
@@ -130,11 +130,11 @@ public class PacketFactory {
      * @param packetType the packet type of the handler to retrieve
      * @return a packet handler, or null
      */
-    public PacketHandler getHandler(int packetType) {
+    public PacketHandler<?> getHandler(int packetType) {
         return handlers.get(packetType);
     }
 
-    public static PacketHandler createHandler(int packetType) {
+    public static PacketHandler<?> createHandler(int packetType) {
         return getInstance().getHandler(packetType);
     }
 

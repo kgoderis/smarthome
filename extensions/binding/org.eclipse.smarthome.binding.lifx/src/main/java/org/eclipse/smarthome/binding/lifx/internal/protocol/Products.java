@@ -51,7 +51,7 @@ public enum Products {
             }
         }
 
-        throw new IllegalArgumentException("Not a valid product ID");
+        throw new IllegalArgumentException(id + " is not a valid product ID.");
     }
 
 }

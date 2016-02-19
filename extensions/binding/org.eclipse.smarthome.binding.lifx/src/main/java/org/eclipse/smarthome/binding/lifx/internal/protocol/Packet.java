@@ -51,8 +51,9 @@ public abstract class Packet {
     /**
      * An ordered array of all fields contained in the common packet preamble.
      */
-    public static final Field[] PREAMBLE_FIELDS = new Field[] { FIELD_SIZE, FIELD_PROTOCOL, FIELD_SOURCE, FIELD_TARGET,
-            FIELD_RESERVED_1, FIELD_ACK, FIELD_SEQUENCE, FIELD_RESERVED_2, FIELD_PACKET_TYPE, FIELD_RESERVED_3 };
+    public static final Field<?>[] PREAMBLE_FIELDS = new Field[] { FIELD_SIZE, FIELD_PROTOCOL, FIELD_SOURCE,
+            FIELD_TARGET, FIELD_RESERVED_1, FIELD_ACK, FIELD_SEQUENCE, FIELD_RESERVED_2, FIELD_PACKET_TYPE,
+            FIELD_RESERVED_3 };
 
     protected int size;
     protected int protocol;
@@ -223,7 +224,7 @@ public abstract class Packet {
     protected int preambleLength() {
         int sum = 0;
 
-        for (Field f : PREAMBLE_FIELDS) {
+        for (Field<?> f : PREAMBLE_FIELDS) {
             sum += f.getLength();
         }
 

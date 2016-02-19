@@ -93,10 +93,9 @@ public class MACAddress {
 
     private void formatHex(String original, int length, String separator) throws IOException {
         ByteArrayInputStream bis = new ByteArrayInputStream(original.getBytes());
-        int n = 0;
         byte[] buffer = new byte[length];
         String result = "";
-        while ((n = bis.read(buffer)) > 0) {
+        while (bis.read(buffer) > 0) {
             for (byte b : buffer) {
                 result += (char) b;
             }

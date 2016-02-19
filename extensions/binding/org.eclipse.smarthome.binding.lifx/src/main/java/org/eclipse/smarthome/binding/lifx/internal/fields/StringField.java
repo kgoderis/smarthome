@@ -48,7 +48,7 @@ public class StringField extends Field<String> {
 
         ByteBuffer field = ByteBuffer.wrap(buf);
 
-        String ret = CHARSET.decode(field).toString();
+        String ret = charset.decode(field).toString();
         ret = ret.replace("\0", "");
 
         return ret;

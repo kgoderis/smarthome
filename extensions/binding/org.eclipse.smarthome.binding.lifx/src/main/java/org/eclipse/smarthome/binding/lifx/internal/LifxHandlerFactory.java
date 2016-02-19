@@ -7,7 +7,7 @@
  */
 package org.eclipse.smarthome.binding.lifx.internal;
 
-import static org.eclipse.smarthome.binding.lifx.LifxBindingConstants.THING_TYPE_LIGHT;
+import static org.eclipse.smarthome.binding.lifx.LifxBindingConstants.*;
 
 import java.util.Collection;
 
@@ -29,7 +29,8 @@ import com.google.common.collect.Lists;
  */
 public class LifxHandlerFactory extends BaseThingHandlerFactory {
 
-    public final static Collection<ThingTypeUID> SUPPORTED_THING_TYPES_UIDS = Lists.newArrayList(THING_TYPE_LIGHT);
+    public final static Collection<ThingTypeUID> SUPPORTED_THING_TYPES_UIDS = Lists.newArrayList(THING_TYPE_COLORLIGHT,
+            THING_TYPE_WHITELIGHT);
 
     @Override
     public boolean supportsThingType(ThingTypeUID thingTypeUID) {
@@ -46,7 +47,7 @@ public class LifxHandlerFactory extends BaseThingHandlerFactory {
 
         ThingTypeUID thingTypeUID = thing.getThingTypeUID();
 
-        if (thingTypeUID.equals(THING_TYPE_LIGHT)) {
+        if (thingTypeUID.equals(THING_TYPE_COLORLIGHT) || thingTypeUID.equals(THING_TYPE_WHITELIGHT)) {
             return new LifxLightHandler(thing);
         }
 

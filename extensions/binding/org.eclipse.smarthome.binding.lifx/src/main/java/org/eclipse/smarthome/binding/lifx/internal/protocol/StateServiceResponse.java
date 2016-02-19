@@ -23,7 +23,7 @@ public class StateServiceResponse extends Packet {
     public static final int TYPE = 0x03;
 
     public static final Field<Integer> FIELD_SERVICE = new UInt8Field();
-    public static final Field<Long> FIELD_PORT = new LittleField(new UInt32Field());
+    public static final Field<Long> FIELD_PORT = new LittleField<>(new UInt32Field());
 
     private int service;
     private long port;
