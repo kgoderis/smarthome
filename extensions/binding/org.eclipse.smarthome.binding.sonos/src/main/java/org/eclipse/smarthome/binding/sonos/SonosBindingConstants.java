@@ -8,7 +8,12 @@
  */
 package org.eclipse.smarthome.binding.sonos;
 
+import java.util.HashSet;
+import java.util.Set;
+
 import org.eclipse.smarthome.core.thing.ThingTypeUID;
+
+import com.google.common.collect.Sets;
 
 /**
  * The {@link SonosBinding} class defines common constants, which are 
@@ -19,10 +24,30 @@ import org.eclipse.smarthome.core.thing.ThingTypeUID;
 public class SonosBindingConstants {
 
     public static final String BINDING_ID = "sonos";
-    
-    // List of all Thing Type UIDs
+    public static final String ESH_PREFIX = "openHAB-";
+   
+    // List of all Thing Type UIDs 
+    //Column (:) is not used for PLAY:1, PLAY:3, PLAY:5 and CONNECT:AMP because of 
+    //ThingTypeUID and device pairing name restrictions
+    public final static ThingTypeUID PLAY1_THING_TYPE_UID = new ThingTypeUID(BINDING_ID, "PLAY1");
+    public final static ThingTypeUID PLAY3_THING_TYPE_UID = new ThingTypeUID(BINDING_ID, "PLAY3");
+    public final static ThingTypeUID PLAY5_THING_TYPE_UID = new ThingTypeUID(BINDING_ID, "PLAY5");
+    public final static ThingTypeUID PLAYBAR_THING_TYPE_UID = new ThingTypeUID(BINDING_ID, "PLAYBAR");
+    public final static ThingTypeUID CONNECT_THING_TYPE_UID = new ThingTypeUID(BINDING_ID, "CONNECT");
+    public final static ThingTypeUID CONNECTAMP_THING_TYPE_UID = new ThingTypeUID(BINDING_ID, "CONNECTAMP");
     public final static ThingTypeUID ZONEPLAYER_THING_TYPE_UID = new ThingTypeUID(BINDING_ID, "zoneplayer");
-
+	
+    public static final Set<ThingTypeUID> SUPPORTED_KNOWN_THING_TYPES_UIDS = Sets.newHashSet(PLAY1_THING_TYPE_UID,
+    		PLAY3_THING_TYPE_UID,
+    		PLAY5_THING_TYPE_UID,
+    		PLAYBAR_THING_TYPE_UID,
+    		CONNECT_THING_TYPE_UID,
+    		CONNECTAMP_THING_TYPE_UID);
+    
+    public static final Set<ThingTypeUID> SUPPORTED_THING_TYPES_UIDS = new HashSet<ThingTypeUID>(SUPPORTED_KNOWN_THING_TYPES_UIDS) {{
+    	add(ZONEPLAYER_THING_TYPE_UID);
+    }};
+    
     // List of all Channel ids
     public final static String ADD = "add";
     public final static String ALARM = "alarm";
@@ -38,6 +63,8 @@ public class SonosBindingConstants {
     public final static String LINEIN = "linein";
     public final static String LOCALCOORDINATOR = "localcoordinator";
     public final static String MUTE = "mute";
+    public final static String NOTIFICATIONSOUND = "notificationsound";
+    public final static String NOTIFICATIONVOLUME = "notificationvolume";
     public final static String PLAYLINEIN = "playlinein";
     public final static String PLAYLIST = "playlist";
     public final static String PLAYQUEUE = "playqueue";
@@ -58,6 +85,7 @@ public class SonosBindingConstants {
     public final static String ZONEGROUP = "zonegroup";
     public final static String ZONEGROUPID = "zonegroupid";
     public final static String ZONENAME = "zonename";
-    
+    public final static String COORDINATOR = "coordinator";
+    public final static String MODELID = "modelId";
 
 }

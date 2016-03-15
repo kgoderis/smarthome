@@ -8,19 +8,26 @@
  */
 package org.eclipse.smarthome.binding.sonos.discovery;
 
-import static org.eclipse.smarthome.binding.sonos.SonosBindingConstants.ZONEPLAYER_THING_TYPE_UID;
-import static org.eclipse.smarthome.binding.sonos.config.ZonePlayerConfiguration.*;
+import static org.eclipse.smarthome.binding.sonos.SonosBindingConstants.BINDING_ID;
+import static org.eclipse.smarthome.binding.sonos.config.ZonePlayerConfiguration.IDENTIFICATION;
+import static org.eclipse.smarthome.binding.sonos.config.ZonePlayerConfiguration.UDN;
 
-import java.util.Collections;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Set;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
+
+import org.eclipse.smarthome.binding.sonos.SonosBindingConstants;
+import org.eclipse.smarthome.binding.sonos.internal.SonosXMLParser;
+import org.eclipse.smarthome.config.discovery.DiscoveryResult;
+import org.eclipse.smarthome.config.discovery.DiscoveryResultBuilder;
+import org.eclipse.smarthome.config.discovery.UpnpDiscoveryParticipant;
 import org.eclipse.smarthome.core.thing.ThingTypeUID;
 import org.eclipse.smarthome.core.thing.ThingUID;
 import org.jupnp.model.meta.RemoteDevice;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.eclipse.smarthome.config.discovery.*;
 
 /**
  * The {@link ZonePlayerDiscoveryParticipant} is responsible processing the
@@ -35,7 +42,7 @@ public class ZonePlayerDiscoveryParticipant implements UpnpDiscoveryParticipant 
 
 	@Override
 	public Set<ThingTypeUID> getSupportedThingTypeUIDs() {
-		return Collections.singleton(ZONEPLAYER_THING_TYPE_UID);
+		return SonosBindingConstants.SUPPORTED_THING_TYPES_UIDS;
 	}
 
 	@Override
@@ -51,10 +58,11 @@ public class ZonePlayerDiscoveryParticipant implements UpnpDiscoveryParticipant 
 			}
 			properties.put(UDN, device.getIdentity().getUdn()
 					.getIdentifierString());
+			properties.put(IDENTIFICATION, getSonosRoomName(device));
 
 			DiscoveryResult result = DiscoveryResultBuilder.create(uid)
 					.withProperties(properties)
-					.withLabel(label).build();
+					.withLabel(label).withRepresentationProperty(IDENTIFICATION).build();
 
 			logger.debug(
 					"Created a DiscoveryResult for device '{}' with UDN '{}'",
@@ -66,20 +74,48 @@ public class ZonePlayerDiscoveryParticipant implements UpnpDiscoveryParticipant 
 		}
 	}
 
+
 	@Override
 	public ThingUID getThingUID(RemoteDevice device) {
 		if (device != null) {
 			if(device.getDetails().getManufacturerDetails().getManufacturer() != null) {
 				if (device.getDetails().getManufacturerDetails().getManufacturer()
 						.toUpperCase().contains("SONOS")) {
-					logger.debug(
-							"Discovered a Sonos Zone Player thing with UDN '{}'",
-							device.getIdentity().getUdn().getIdentifierString());
-					return new ThingUID(ZONEPLAYER_THING_TYPE_UID, device
-							.getIdentity().getUdn().getIdentifierString());
+					
+					ThingTypeUID thingUID = new ThingTypeUID(BINDING_ID, getModelName(device));
+
+					// In case a new "unknown" Sonos player is discovered a generic ThingTypeUID will be used
+					if (!SonosBindingConstants.SUPPORTED_KNOWN_THING_TYPES_UIDS.contains(thingUID)) {
+						thingUID = SonosBindingConstants.ZONEPLAYER_THING_TYPE_UID;
+					}
+					
+					logger.debug("Discovered a Sonos '{}' thing with UDN '{}'", thingUID, device.getIdentity().getUdn().getIdentifierString());
+					return new ThingUID(thingUID, device.getIdentity().getUdn().getIdentifierString());
 				} 
 			}
 		}
+	
 		return null;
 	}
+	
+	private String getModelName(RemoteDevice device) {
+		String modelName = device.getDetails().getModelDetails().getModelName();
+		
+		// The model name provided by upnp is formated like in the example form "Sonos PLAY:1" or "Sonos PLAYBAR"
+	    Matcher matcher = Pattern.compile("\\s(.*)").matcher(modelName);
+	    if (matcher.find()) {
+	    	modelName=matcher.group(1);
+	    }		
+		if (modelName.contains(":")) {
+			//ThingTypeUID cannot contain column (:) character
+			modelName = modelName.replace(":", "");
+		}
+		return modelName;
+	}
+
+	private String getSonosRoomName(RemoteDevice device){
+		return SonosXMLParser.getRoomName(device.getIdentity().getDescriptorURL().toString());
+	}
+
 }
+

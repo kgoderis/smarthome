@@ -46,7 +46,13 @@ public class SonosHandlerFactory extends BaseThingHandlerFactory {
 	// optional OPML URL that can be configured through configuration admin 
 	private String opmlUrl = null;
 	
-    private final static Collection<ThingTypeUID> SUPPORTED_THING_TYPES_UIDS = Lists.newArrayList(ZONEPLAYER_THING_TYPE_UID);
+    private final static Collection<ThingTypeUID> SUPPORTED_THING_TYPES_UIDS = Lists.newArrayList(
+    		PLAY1_THING_TYPE_UID,
+    		PLAY3_THING_TYPE_UID,
+    		PLAY5_THING_TYPE_UID,
+    		PLAYBAR_THING_TYPE_UID,
+    		CONNECT_THING_TYPE_UID,
+    		CONNECTAMP_THING_TYPE_UID);
     
     protected void activate(ComponentContext componentContext) {
     	super.activate(componentContext);
@@ -57,11 +63,11 @@ public class SonosHandlerFactory extends BaseThingHandlerFactory {
     @Override
     public Thing createThing(ThingTypeUID thingTypeUID, Configuration configuration,
             ThingUID thingUID, ThingUID bridgeUID) {
-
-        if (ZONEPLAYER_THING_TYPE_UID.equals(thingTypeUID)) {
-            ThingUID sonosPlayerUID = getPlayerUID(thingTypeUID, thingUID, configuration);
-            logger.debug("Creating a sonos zone player thing with ID '{}'",sonosPlayerUID);
-            return super.createThing(thingTypeUID, configuration, sonosPlayerUID,null);
+    	
+        if (SUPPORTED_THING_TYPES_UIDS.contains(thingTypeUID)) {
+            ThingUID sonosDeviceUID = getPlayerUID(thingTypeUID, thingUID, configuration);
+            logger.debug("Creating a sonos thing with ID '{}'", sonosDeviceUID);
+            return super.createThing(thingTypeUID, configuration, sonosDeviceUID,null);
         }
         throw new IllegalArgumentException("The thing type " + thingTypeUID
                 + " is not supported by the sonos binding.");
@@ -70,6 +76,7 @@ public class SonosHandlerFactory extends BaseThingHandlerFactory {
     
     @Override
     public boolean supportsThingType(ThingTypeUID thingTypeUID) {
+    	
         return SUPPORTED_THING_TYPES_UIDS.contains(thingTypeUID);
     }
 
@@ -77,8 +84,8 @@ public class SonosHandlerFactory extends BaseThingHandlerFactory {
     protected ThingHandler createHandler(Thing thing) {
 
         ThingTypeUID thingTypeUID = thing.getThingTypeUID();
-
-        if (thingTypeUID.equals(ZONEPLAYER_THING_TYPE_UID)) {
+    		
+        if (SUPPORTED_THING_TYPES_UIDS.contains(thingTypeUID)) {
         	logger.debug("Creating a ZonePlayerHandler for thing '{}' with UDN '{}'",thing.getUID(),thing.getConfiguration().get(UDN));
             return new ZonePlayerHandler(thing, upnpIOService, discoveryServiceRegistry, opmlUrl);
         }

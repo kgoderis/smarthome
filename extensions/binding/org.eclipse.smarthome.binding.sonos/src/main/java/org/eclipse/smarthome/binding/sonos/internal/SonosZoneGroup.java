@@ -21,6 +21,7 @@ import java.util.List;
 public class SonosZoneGroup implements Cloneable {
 
 	private final List<String> members;
+	private List<String> memberZoneNames;
 	private final String coordinator;
 	private final String id;
 
@@ -32,8 +33,18 @@ public class SonosZoneGroup implements Cloneable {
 		catch(Exception e){ return null; }
 	}
 
+	public SonosZoneGroup(String id, String coordinator, Collection<String> members, Collection<String> memberZoneNames) {
+		this.members = new ArrayList<String>(members);
+		if (!this.members.contains(coordinator)) {
+			this.members.add(coordinator);
+		}
+		this.memberZoneNames = new ArrayList<String>(memberZoneNames);
+		this.coordinator = coordinator;
+		this.id = id;
+	}
+	
 	public SonosZoneGroup(String id, String coordinator, Collection<String> members) {
-		this.members= new ArrayList<String>(members);
+		this.members = new ArrayList<String>(members);
 		if (!this.members.contains(coordinator)) {
 			this.members.add(coordinator);
 		}
@@ -44,7 +55,11 @@ public class SonosZoneGroup implements Cloneable {
 	public List<String> getMembers() {
 		return members;
 	}
-
+	
+	public List<String> getMemberZoneNames() {
+		return memberZoneNames;
+	}
+	
 	public String getCoordinator() {
 		return coordinator;
 	}
