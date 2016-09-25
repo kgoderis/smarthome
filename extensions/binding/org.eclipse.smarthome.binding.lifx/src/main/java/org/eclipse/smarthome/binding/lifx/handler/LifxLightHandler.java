@@ -722,7 +722,7 @@ public class LifxLightHandler extends BaseThingHandler {
                 logger.trace("{} : Packet is a response to a packet of type '{}' with sequence number '{}'",
                         new Object[] { macAddress.getHex(), originalPacket.getClass().getSimpleName(),
                                 packet.getSequence() });
-                logger.trace("{} : This response was {} expected", macAddress.getHex(),
+                logger.trace("{} : This response was {}expected", macAddress.getHex(),
                         originalPacket.isExpectedResponse(packet.getPacketType()) ? "" : "not ");
                 if (originalPacket.isFulfilled(packet)) {
                     sentPackets.remove(packet.getSequence());
