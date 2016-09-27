@@ -6,8 +6,8 @@ angular.module('PaperUI.services', [ 'PaperUI.constants' ]).config(function($htt
     $httpProvider.interceptors.push(function($q, $injector) {
         return {
             'responseError' : function(rejection) {
-                var showError = !!rejection.showError;
-                if (showError) {
+                var showError = rejection.showError;
+                if (showError !== false) {
                     $injector.get('toastService').showErrorToast('ERROR: ' + rejection.status + ' - ' + rejection.statusText);
                 }
                 return $q.reject(rejection);
@@ -442,6 +442,7 @@ angular.module('PaperUI.services', [ 'PaperUI.constants' ]).config(function($htt
                 thingChannels.push(group);
             }
 
+            thingChannels = this.addTypeToChannels(thingChannels, channelTypes);
             return thingChannels;
         },
 
@@ -518,6 +519,14 @@ angular.module('PaperUI.services', [ 'PaperUI.constants' ]).config(function($htt
                 }
             }
             return matched;
+        },
+        addTypeToChannels : function(groups, channelTypes) {
+            for (var g_i = 0; g_i < groups.length; g_i++) {
+                for (var c_i = 0; c_i < groups[g_i].channels.length; c_i++) {
+                    groups[g_i].channels[c_i].channelType = this.getChannelFromChannelTypes(channelTypes, groups[g_i].channels[c_i].channelTypeUID);
+                }
+            }
+            return groups;
         }
     }
 }).factory('util', function() {
